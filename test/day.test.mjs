@@ -48,6 +48,23 @@ test('разделы: турнир × разряд, в порядке разря
   assert.deepEqual(build(data, { settings: resolve({}) }).leagues.map((l) => l.id), ['1:148-2026', '2:382-2026'], 'по умолчанию пар нет');
 });
 
+test('Большой шлем: общие сетки ESPN разделяются по полу и разряду без дублей', () => {
+  const slam = event('slam', 'US Open', {
+    'womens-singles': [comp(1, '2026-11-13T12:00Z', single(ANDREEVA), single(SHNAIDER))],
+    'mens-singles': [comp(2, '2026-11-13T12:00Z', single(FRITZ), single(MUSETTI))],
+    'womens-doubles': [comp(3, '2026-11-13T12:00Z', pair(ERRANI, PAOLINI), pair(SINIAKOVA, TOWNSEND))],
+    'mens-doubles': [comp(4, '2026-11-13T12:00Z', pair(FRITZ, MUSETTI), pair(FRITZ, MUSETTI))],
+    'mixed-doubles': [comp(5, '2026-11-13T12:00Z', pair(FRITZ, ANDREEVA), pair(MUSETTI, SHNAIDER))],
+  });
+  const data = board({ atp: [slam], wta: [slam] });
+  for (const leagues of [[1, 2, 3, 4], [2, 1, 4, 3], [1], [2], [3], [4]]) {
+    const day = build(data, { settings: resolve({ leagues }) });
+    const expected = { 1: 2, 2: 1, 3: 4, 4: 3 };
+    assert.deepEqual(day.leagues.map((l) => [l.id, l.matches.map((m) => m.id)]),
+      leagues.map((id) => [`${id}:slam`, [expected[id]]]));
+  }
+});
+
 test('день — по часовому поясу; идущий матч, начатый до полуночи, остаётся в сегодняшнем дне', () => {
   const data = finals(
     comp(1, '2026-11-12T22:20Z', single(ANDREEVA), single(SHNAIDER), { state: 'post', sets: [[6], [4]], winner: 0 }),
