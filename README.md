@@ -180,3 +180,7 @@ npm run app
 
 `npm run dist` собирает установщик в `dist/`: `tennis-center-X.Y.Z-setup.exe`. Версия берётся
 из `package.json`.
+
+Иконка теннисного мяча хранится в `src/assets/icon.png` и `icon.ico` (16–256 px).
+Исходник — `scripts/make-icon.ps1`; пересоздание в Windows:
+`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1`.
