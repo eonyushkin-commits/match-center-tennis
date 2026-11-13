@@ -14,11 +14,12 @@ const external = []; // что приложение хотело открыть 
 shell.openExternal = async (url) => { external.push(url); };
 const fake = fakeNet();
 net.fetch = fake;
+globalThis.fetch = fake; // ESPN приложение спрашивает встроенным fetch Node.js
 // окно, закрытое другими окнами, Chromium считает скрытым — проверкам это мешает
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
-// турнир, добавленный по номеру; подсказку про трей не показываем — это настоящее уведомление Windows
+// подсказку про трей не показываем — это настоящее уведомление Windows
 fs.mkdirSync(app.getPath('userData'), { recursive: true });
-fs.writeFileSync(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify({ leagues: [47, 48, 338], ui: { trayHintShown: true } }));
+fs.writeFileSync(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify({ ui: { trayHintShown: true } }));
 require('../../src/electron/main.cjs');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,93 +69,59 @@ app.whenReady().then(async () => {
     await on(`/эфиров/.test(document.querySelector('#status-text').textContent)`, 'статус каналов');
     await on(`!!document.querySelector('[data-key="m:101"] .stream[data-play]')`, 'эфиры у матча');
     assert.ok(await page(`!!document.querySelector('[data-key="live"] [data-key="live:101"]')`));
-    assert.equal(await page(`document.querySelector('[data-key="m:101"] .name').textContent`), 'Арсенал');
+    assert.equal(await page(`document.querySelector('[data-key="m:101"] .name').textContent`), 'Mirra Andreeva');
+    assert.equal(await page(`[...document.querySelectorAll('[data-key="m:101"] .team:first-child .set')].map((n) => n.textContent).join(' ')`), '6 2');
   });
 
   // каналы перечитываются раз в минуту, так что за несколько секунд новый эфир покажет только кнопка
   const streamsOf103 = (n) => on(`document.querySelectorAll('[data-key="m:103"] .stream[data-play]').length === ${n}`, `эфиров у матча 103: ${n}`, 6000);
 
   await step('кнопка ↻: каналы перечитываются, новый эфир появляется сразу', async () => {
-    fake.addStream('englishaccent', 1);
-    fake.addStream('pl_forever', 2);
+    fake.addStream('tennisprimesport', 1);
+    fake.addStream('sportcast_tennis', 2);
     await click('#refresh');
     await streamsOf103(2);
     await on(`!document.querySelector('#refresh').classList.contains('spin')`, 'значок перестал крутиться');
   });
 
-  await step('идущий эфир: плеер в строке матча, события под ним', async () => {
+  await step('эфир открывается напрямую в защищённом окне VK', async () => {
     await click('[data-key="live:101"] .stream[data-play]');
-    await on(`!!document.querySelector('.player iframe')`, 'плеер');
-    assert.match(await frame(), /^https:\/\/vkvideo\.ru\/video_ext\.php\?oid=-1&id=1&/);
-    await on(`document.querySelectorAll('.details .ev').length > 0`, 'события матча');
+    await until('окно эфира', () => players().length === 1 && players()[0].webContents.getURL().includes('video_ext.php'));
+    const child = players()[0];
+    assert.match(child.webContents.getURL(), /oid=-1&id=1&/);
+    assert.equal(child.isAlwaysOnTop(), true);
+    const prefs = child.webContents.getLastWebPreferences();
+    assert.equal(prefs.nodeIntegration, false);
+    assert.equal(prefs.contextIsolation, true);
+    assert.equal(prefs.sandbox, true);
+    assert.ok(!prefs.preload);
+    assert.equal(await frame(), null);
   });
-
-  await step('клик по командам матча, который смотрят: эфир и события сворачиваются', async () => {
-    await click('[data-key="live:101"] .teams');
-    await on(`!document.querySelector('.player') && !document.querySelector('.details')`, 'плеер и события закрыты');
-    await click('[data-key="live:101"] .stream[data-play]');
-    await on(`!!document.querySelector('.player.open iframe') && !!document.querySelector('.details')`, 'плеер и события снова открыты');
-  });
-
-  await step('другой канал того же матча: плеер переключается на месте', async () => {
-    await click('[data-key="live:101"] .stream[data-play]:not(.active)');
-    await until('эфир второго канала', async () => /oid=-2&id=1&/.test(await frame()));
-    assert.equal(await page(`document.querySelectorAll('.player').length`), 1);
-  });
-
-  await step('«В окне»: эфир уходит в отдельное окно, кнопка «События и составы» остаётся в строке', async () => {
-    await click('.player .popout');
-    await until('окно плеера', () => players().length === 1 && !players()[0].webContents.isLoading());
-    assert.match(await frame(players()[0]), /oid=-2&id=1&.*&autoplay=1&mute=0$/); // идущий эфир в окне запускается сам
-    assert.deepEqual(players()[0].getContentSize(), [800, 450]); // 16:9 у видео, а не у окна с заголовком
-    assert.match(players()[0].getTitle() + await js(players()[0], 'document.title'), /Арсенал — Челси · АПЛ Навсегда/);
-    await on(`!document.querySelector('.player.open')`, 'плеер в строке закрыт');
-    const toggle = '.popbar [data-details="live:101"]';
-    assert.equal(await page(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded')`), 'true');
-    await click(toggle);
-    await on(`!document.querySelector('.details')`, 'события свёрнуты');
-    await click(toggle);
-    await on(`!!document.querySelector('.details')`, 'события раскрыты');
-  });
-
-  await step('запись: открывается с начала', async () => {
+  await step('запись открывается вторым самостоятельным плеером', async () => {
     await click('[data-key="m:102"] .stream[data-play]');
-    await until('плеер записи', async () => /oid=-1&id=2&/.test(await frame() || ''));
-    assert.match(await frame(), /hash=smoke&js_api=1$/); // без t=; js_api — плеер сообщает позицию для «В окне»
-  });
-
-  await step('второе окно плеера открывается рядом с первым', async () => {
-    await click('.player .popout');
-    await until('два окна плеера', () => players().length === 2 && players().every((w) => !w.webContents.isLoading()));
-    const frames = await Promise.all(players().map((w) => frame(w)));
-    assert.deepEqual(frames.map((src) => /oid=-(\d)&id=(\d)/.exec(src).slice(1).join('_')).sort(), ['1_2', '2_1']);
-  });
-
-  await step('окно с записью закрыли: запись возвращается в строку матча и запускается сама', async () => {
-    await on(`!document.querySelector('.player')`, 'плеер в строке закрыт');
-    for (const w of players()) if (/id=2&/.test(await frame(w))) w.close();
-    await until('осталось одно окно', () => players().length === 1);
-    await until('плеер записи в строке', async () => /oid=-1&id=2&/.test(await frame() || ''));
-    assert.match(await frame(), /hash=smoke&js_api=1&autoplay=1&mute=0$/);
-    assert.equal(await page(`document.querySelector('.player').previousElementSibling.dataset.key`), 'm:102');
-    assert.equal(await page(`!!document.querySelector('.popbar [data-details="m:102"]')`), false);
+    await until('два окна', () => players().length === 2 && players().some(w => /id=2&/.test(w.webContents.getURL())));
+    for (const w of players()) if (/id=2&/.test(w.webContents.getURL())) w.close();
+    await until('осталось окно эфира', () => players().length === 1);
+    assert.equal(await frame(), null);
   });
 
   await step('окна не уходят на чужой сайт: такая ссылка открывается в браузере', async () => {
     const child = players()[0];
     const before = child.webContents.getURL();
-    await js(child, `location.href = 'https://vkvideo.ru/@pl_forever', true`);
+    await js(child, `location.href = 'https://vkvideo.ru/@tennis_bolshe', true`);
     await js(win, `location.href = 'https://example.com/', true`);
-    await until('ссылки ушли в браузер', () => external.includes('https://vkvideo.ru/@pl_forever') && external.includes('https://example.com/'));
+    await until('ссылки ушли в браузер', () => external.includes('https://vkvideo.ru/@tennis_bolshe') && external.includes('https://example.com/'));
     assert.equal(child.webContents.getURL(), before);
     assert.ok(win.webContents.getURL().startsWith('http://127.0.0.1:'));
   });
 
-  await step('настройки открываются сразу; турнир, добавленный по номеру, — с названием', async () => {
+  await step('настройки открываются сразу: пять каналов и четыре разряда', async () => {
     await click('#open-settings');
     assert.equal(await page(`document.querySelector('#settings').open`), true);
     const labels = await page(`[...document.querySelectorAll('#settings input[name="league"]')].map((i) => i.closest('label').textContent.trim())`);
-    assert.ok(labels.includes('Россия · ФНЛ'), labels.join(', '));
+    assert.deepEqual(labels, ['ATP · одиночный разряд', 'WTA · одиночный разряд', 'ATP · парный разряд', 'WTA · парный разряд']);
+    assert.deepEqual(await page(`[...document.querySelectorAll('#settings input[name="league"]')].map((i) => i.checked)`), [true, true, false, false], 'пары по умолчанию выключены');
+    assert.equal(await page(`document.querySelectorAll('#settings #chan-list li').length`), 5);
     await page(`document.querySelector('#settings').close(), true`);
   });
 
@@ -164,13 +131,13 @@ app.whenReady().then(async () => {
     const { localYmd } = await import('../../src/core/day.mjs');
     win.showInactive(); // как openMatch в main.cjs: показать окно и попросить страницу раскрыть матч
     win.webContents.send('open-match', { date: localYmd(new Date()), id: 101 });
-    await until('плеер идущего матча', async () => /id=1&/.test(await page(`document.querySelector('.player.open iframe')?.src ?? ''`)));
-    assert.equal(await page(`document.querySelector('.player').previousElementSibling.dataset.key`), 'live:101');
+    await until('окно из уведомления', () => players().length === 2);
+    assert.equal(win.isVisible(), true);
   });
 
   await step('крестик прячет окно в трей: приложение работает, плеер и лента закрыты, лента открывается при показе', async () => {
     for (const w of players()) w.destroy();
-    assert.equal(await page(`!!document.querySelector('.player iframe')`), true, 'перед закрытием плеер открыт');
+    assert.equal(await frame(), null);
     win.close();
     await sleep(500);
     assert.equal(win.isDestroyed(), false);

@@ -4,49 +4,49 @@ import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { createFeed } from '../src/core/feed.mjs';
 import { resolve } from '../src/core/settings.mjs';
+import { ANDREEVA, SHNAIDER, board, comp, event, single } from './helpers/espn-data.mjs';
 
 const pause = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 
-function setup({ dayMs = 1e9, detailsMs = 1e9, retryMs = 1e9 } = {}) {
-  const state = { score: 0, streams: [], fail: null, detailsFail: null, user: {}, calls: 0, detailsCalls: 0 };
+function setup({ dayMs = 1e9, retryMs = 1e9 } = {}) {
+  const state = { games: 0, streams: [], fail: null, user: {}, calls: 0, tours: null };
   const poller = Object.assign(new EventEmitter(), { snapshot: () => ({ ready: true, channels: [], streams: state.streams }) });
   const settings = Object.assign(new EventEmitter(), { warnings: [], get: () => resolve(state.user) });
-  const fotmob = {
-    names: async () => ({}),
-    day: async () => {
+  const espn = {
+    day: async (date, tours) => {
       state.calls++;
+      state.tours = tours;
       if (state.fail) throw new Error(state.fail);
-      return { leagues: [{ id: 47, name: 'PL', matches: [{ id: 7, home: { id: 1, name: 'Fulham', score: state.score }, away: { id: 2, name: 'Arsenal', score: 0 }, status: { utcTime: '2026-09-20T15:00:00Z', started: true } }] }] };
+      return board({ wta: [event('382-2026', 'WTA Finals', {
+        'womens-singles': [comp(7, '2026-09-20T15:00Z', single(ANDREEVA), single(SHNAIDER), { state: 'in', sets: [[state.games], [0]] })],
+      })] });
     },
   };
-  const details = async (id) => {
-    state.detailsCalls++;
-    if (state.detailsFail) throw new Error(state.detailsFail);
-    return { id, goals: state.score };
-  };
-  const feed = createFeed({ settings, poller, fotmob, details, version: 'v', dayMs, detailsMs, retryMs });
+  const feed = createFeed({ settings, poller, espn, version: 'v', dayMs, retryMs });
   const log = [];
-  const sub = (watch = {}) => feed.subscribe({ date: '20260920', tz: 'UTC', ...watch }, (event, json) => log.push([event, JSON.parse(json)]));
+  const sub = () => feed.subscribe({ date: '20260920', tz: 'UTC' }, (event, json) => log.push([event, JSON.parse(json)]));
   return { state, poller, settings, feed, log, sub, names: () => log.map(([e]) => e) };
 }
+const firstMatch = (entry) => entry[1].leagues[0].matches[0];
 
-test('подписка сразу получает состояние каналов, расписание и события раскрытого матча', async () => {
-  const t = setup();
-  const stop = t.sub({ matchId: '7' });
-  await pause();
-  stop();
-  assert.deepEqual(t.names().sort(), ['day', 'details', 'status']);
-  assert.equal(t.log.find(([e]) => e === 'status')[1].version, 'v');
-  assert.equal(t.log.find(([e]) => e === 'day')[1].leagues[0].matches[0].home.name, 'Fulham');
-  assert.deepEqual(t.log.find(([e]) => e === 'details')[1], { id: '7', goals: 0 });
-});
-
-test('без раскрытого матча события не запрашиваются', async () => {
+test('подписка сразу получает состояние каналов и расписание', async () => {
   const t = setup();
   const stop = t.sub();
   await pause();
   stop();
   assert.deepEqual(t.names().sort(), ['day', 'status']);
+  assert.equal(t.log.find(([e]) => e === 'status')[1].version, 'v');
+  assert.equal(firstMatch(t.log.find(([e]) => e === 'day')).home.name, 'Mirra Andreeva');
+  assert.deepEqual(t.state.tours, ['atp', 'wta']);
+});
+
+test('спрашиваются только туры выбранных разрядов', async () => {
+  const t = setup();
+  t.state.user = { leagues: [2, 4] };
+  const stop = t.sub();
+  await pause();
+  stop();
+  assert.deepEqual(t.state.tours, ['wta']);
 });
 
 test('по часам присылается только изменившееся: счёт поменялся — расписание, нет — ничего', async () => {
@@ -56,38 +56,38 @@ test('по часам присылается только изменившеес
   const before = t.log.length;
   await pause(60);
   assert.equal(t.log.length, before, 'ничего не изменилось — ничего не пришло');
-  assert.ok(t.state.calls > 1, 'но FotMob спрашивали');
-  t.state.score = 1;
+  assert.ok(t.state.calls > 1, 'но ESPN спрашивали');
+  t.state.games = 1;
   await pause(60);
   stop();
   assert.equal(t.log.at(-1)[0], 'day');
-  assert.equal(t.log.at(-1)[1].leagues[0].matches[0].home.score, 1);
+  assert.equal(firstMatch(t.log.at(-1)).home.sets[0].games, 1);
 });
 
 test('прочитаны каналы или сохранены настройки — расписание приходит сразу, не дожидаясь круга', async () => {
   const t = setup();
   const stop = t.sub();
   await pause();
-  t.state.streams = [{ title: 'Fulham — Arsenal', teams: ['fulham', 'arsenal'], status: 'started', time: null, url: 'u', channel: 'X' }];
+  t.state.streams = [{ title: 'Андреева — Шнайдер', teams: ['андреева', 'шнайдер'], doubles: false, status: 'started', time: null, url: 'u', channel: 'X' }];
   t.poller.emit('update');
   await pause();
-  assert.deepEqual(t.log.at(-1)[1].leagues[0].matches[0].streams.map((s) => s.url), ['u']);
+  assert.deepEqual(firstMatch(t.log.at(-1)).streams.map((s) => s.url), ['u']);
   assert.equal(t.log.at(-2)[0], 'status');
-  t.state.user = { favorites: [{ id: 1, name: 'Fulham' }] };
+  t.state.user = { favorites: [{ id: 9820, name: 'Mirra Andreeva' }] };
   t.settings.emit('change');
   await pause();
   stop();
-  assert.equal(t.log.at(-1)[1].leagues[0].matches[0].favorite, true);
+  assert.equal(firstMatch(t.log.at(-1)).favorite, true);
 });
 
-test('сбой FotMob — ошибка; после сбоя расписание приходит заново, даже прежнее', async () => {
+test('сбой ESPN — ошибка; после сбоя расписание приходит заново, даже прежнее', async () => {
   const t = setup();
   const stop = t.sub();
   await pause();
-  t.state.fail = 'FotMob ответил 503';
+  t.state.fail = 'ESPN ответил 503';
   t.poller.emit('update');
   await pause();
-  assert.deepEqual(t.log.at(-1), ['day-error', { message: 'FotMob ответил 503' }]);
+  assert.deepEqual(t.log.at(-1), ['day-error', { message: 'ESPN ответил 503' }]);
   t.state.fail = null;
   t.poller.emit('update');
   await pause();
@@ -112,7 +112,7 @@ test('после отписки ничего не приходит и ядро �
   await pause();
   stop();
   const before = t.log.length;
-  t.state.score = 5;
+  t.state.games = 5;
   t.poller.emit('update');
   await pause(40);
   assert.equal(t.log.length, before);
@@ -121,13 +121,4 @@ test('после отписки ничего не приходит и ядро �
   t.sub();
   t.feed.close();
   assert.equal(t.poller.listenerCount('update'), 0);
-});
-
-test('события раскрытого матча спрашиваются чаще расписания', async () => {
-  const t = setup({ detailsMs: 15 });
-  const stop = t.sub({ matchId: '7' });
-  await pause(60);
-  stop();
-  assert.equal(t.state.calls, 1, 'расписание — один раз');
-  assert.ok(t.state.detailsCalls >= 3, `события — по своим часам (${t.state.detailsCalls})`);
 });

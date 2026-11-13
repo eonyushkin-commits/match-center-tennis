@@ -1,8 +1,8 @@
 {
-  "name": "match-center-english-football",
-  "productName": "Матч-центр",
-  "version": "2.3.8",
-  "description": "Матч-центр по английскому футболу: расписание FotMob и трансляции из VK Видео",
+  "name": "match-center-tennis",
+  "productName": "Матч-центр Теннис",
+  "version": "1.0.0",
+  "description": "Матч-центр по теннису: расписание и счёт ATP и WTA из ESPN, трансляции из VK Видео",
   "main": "src/electron/main.cjs",
   "type": "commonjs",
   "private": true,
@@ -13,7 +13,6 @@
     "app": "node scripts/electron.mjs .",
     "test": "node --test \"test/*.test.mjs\"",
     "smoke": "node scripts/smoke.mjs",
-    "icon": "node scripts/electron.mjs scripts/make-icon.mjs",
     "dist": "electron-builder --win --publish never"
   },
   "dependencies": {
@@ -25,14 +24,13 @@
     "linkedom": "^0.18.13"
   },
   "build": {
-    "appId": "ru.sportcenter.matchcenter",
-    "productName": "Матч-центр",
+    "appId": "ru.sportcenter.tenniscenter",
+    "productName": "Матч-центр Теннис",
     "files": [
       "src/**",
       "package.json"
     ],
     "directories": {
-      "buildResources": "build",
       "output": "dist"
     },
     "win": {
@@ -48,14 +46,14 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "match-center-${version}-setup.${ext}",
-      "shortcutName": "Матч-центр"
+      "artifactName": "tennis-center-${version}-setup.${ext}",
+      "shortcutName": "Матч-центр Теннис"
     },
     "publish": [
       {
         "provider": "github",
         "owner": "eonyushkin-commits",
-        "repo": "match-center-english-football"
+        "repo": "match-center-tennis"
       }
     ]
   },

@@ -3,65 +3,72 @@ import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { resolve } from '../src/core/settings.mjs';
 import { watchFavorites } from '../src/core/watch.mjs';
+import { ANDREEVA, SHNAIDER, board, comp, event, single } from './helpers/espn-data.mjs';
 
 const KICKOFF = Date.parse('2026-09-20T15:30:00Z');
 const MIN = 60e3;
-const ru = { Participants: { 1: 'Фулхэм', 2: 'Манчестер Юнайтед' } };
-const stream = (url, status = 'started') => ({ title: 'Фулхэм — Манчестер Юнайтед', teams: ['фулхэм', 'манчестер юнайтед'], status, time: null, url, channel: 'X' });
 
-// Матч в расписании FotMob; status меняется по ходу теста
-function setup(user = { favorites: [{ id: 2, name: 'Манчестер Юнайтед' }] }) {
-  const status = { utcTime: new Date(KICKOFF).toISOString(), started: false, finished: false };
-  const fm = { leagues: [{ id: 47, matches: [{ id: 7, home: { id: 1, name: 'Fulham' }, away: { id: 2, name: 'Man United' }, status }] }] };
+// Матч в табло ESPN; match.state меняется по ходу теста
+function setup(user = { favorites: [{ id: 8017, name: 'Diana Shnaider' }] }) {
+  const match = { state: 'pre', timeValid: true };
+  const data = () => board({ wta: [event('382-2026', 'WTA Finals', {
+    'womens-singles': [comp(7, new Date(KICKOFF).toISOString(), single(ANDREEVA), single(SHNAIDER), { state: match.state, timeValid: match.timeValid, sets: match.state === 'pre' ? [[], []] : [[1], [0]] })],
+  })] });
   const poller = new EventEmitter();
-  let streams = [];
-  poller.snapshot = () => ({ streams });
+  poller.snapshot = () => ({ streams: [] });
   let now = KICKOFF - 60 * MIN;
   const events = [];
   const w = watchFavorites({
-    poller, settings: { get: () => resolve(user), on() {} }, fotmob: { day: async () => fm, names: async () => ru },
-    onEvent: (e) => events.push(`${e.kind}${e.stream ? `:${e.stream.url}` : ''}`), now: () => now, log: {},
+    poller, settings: { get: () => resolve(user), on() {} }, espn: { day: async () => data() },
+    onEvent: (e) => events.push(e.kind), now: () => now, log: {},
   });
-  return {
-    events, status,
-    at: async (t, s = streams) => { now = t; streams = s; return w.check(); },
-    stop: w.stop,
-  };
+  return { events, match, at: async (t) => { now = t; return w.check(); }, stop: w.stop };
 }
 
-test('за 15 минут и в начале матча — по одному разу; запуск трансляции не уведомляет', async () => {
+test('за 15 минут и в начале матча — по одному разу', async () => {
   const t = setup();
-  await t.at(KICKOFF - 40 * MIN, [stream('уже-шёл')]);
-  await t.at(KICKOFF - 20 * MIN, [stream('уже-шёл'), stream('новый', 'upcoming')]);
+  await t.at(KICKOFF - 40 * MIN);
+  await t.at(KICKOFF - 20 * MIN);
   await t.at(KICKOFF - 15 * MIN);
-  await t.at(KICKOFF - 14 * MIN, [stream('уже-шёл'), stream('новый')]);
+  await t.at(KICKOFF - 14 * MIN);
   await t.at(KICKOFF - 5 * MIN);
-  t.status.started = true;
+  t.match.state = 'in';
   await t.at(KICKOFF + 1 * MIN);
   await t.at(KICKOFF + 3 * MIN);
   t.stop();
   assert.deepEqual(t.events, ['soon', 'kickoff']);
 });
 
-test('отмеченный колокольчиком матч уведомляет, даже если команды не в избранном', async () => {
+test('матч задержался: ждём по минуте, «начался» приходит, когда он действительно пошёл', async () => {
+  const t = setup();
+  await t.at(KICKOFF - 15 * MIN);
+  assert.equal(await t.at(KICKOFF + 30 * MIN), KICKOFF + 31 * MIN, 'время прошло, матч не идёт — через минуту ещё раз');
+  assert.deepEqual(t.events, ['soon']);
+  t.match.state = 'in';
+  await t.at(KICKOFF + 90 * MIN);
+  t.stop();
+  assert.deepEqual(t.events, ['soon', 'kickoff']);
+});
+
+test('отмеченный колокольчиком матч уведомляет, даже если игроки не в избранном', async () => {
   // время в записи нужно только для очистки прошедших матчей (по настоящим часам), поэтому — будущее
   const utcTime = new Date(Date.now() + 3600e3).toISOString();
-  const t = setup({ favoriteMatches: [{ id: 7, name: 'Фулхэм — Манчестер Юнайтед', utcTime }] });
+  const t = setup({ favoriteMatches: [{ id: 7, name: 'Mirra Andreeva — Diana Shnaider', utcTime }] });
   await t.at(KICKOFF - 15 * MIN);
-  t.status.started = true;
+  t.match.state = 'in';
   await t.at(KICKOFF + 1 * MIN);
   t.stop();
   assert.deepEqual(t.events, ['soon', 'kickoff']);
 });
 
-test('приложение открыли за 5 минут до начала — напоминание сразу; через полчаса после — уже нет', async () => {
+test('приложение открыли за 5 минут до начала — напоминание сразу; через полчаса после начала — уже нет', async () => {
   const late = setup();
   await late.at(KICKOFF - 5 * MIN);
   late.stop();
   assert.deepEqual(late.events, ['soon']);
 
   const tooLate = setup();
-  tooLate.status.started = true;
+  tooLate.match.state = 'in';
   await tooLate.at(KICKOFF + 30 * MIN);
   tooLate.stop();
   assert.deepEqual(tooLate.events, []);
@@ -71,16 +78,26 @@ test('следующая проверка — к ближайшему момен
   const t = setup();
   assert.equal(await t.at(KICKOFF - 60 * MIN), KICKOFF - 15 * MIN);
   assert.equal(await t.at(KICKOFF - 15 * MIN), KICKOFF);
+  t.match.state = 'in';
   assert.equal(await t.at(KICKOFF + 1 * MIN), Infinity);
   t.stop();
   assert.deepEqual(t.events, ['soon', 'kickoff']);
 });
 
+test('время матча не назначено — напоминать не о чем', async () => {
+  const t = setup();
+  t.match.timeValid = false;
+  assert.equal(await t.at(KICKOFF - 10 * MIN), Infinity);
+  t.stop();
+  assert.deepEqual(t.events, []);
+});
+
 test('без избранного и с выключенными уведомлениями — тишина', async () => {
-  for (const user of [{}, { favorites: [{ id: 1, name: 'Фулхэм' }], notifications: false }]) {
+  for (const user of [{}, { favorites: [{ id: 9820, name: 'Mirra Andreeva' }], notifications: false }]) {
     const t = setup(user);
-    await t.at(KICKOFF - 10 * MIN, []);
-    await t.at(KICKOFF + 1 * MIN, [stream('новый')]);
+    await t.at(KICKOFF - 10 * MIN);
+    t.match.state = 'in';
+    await t.at(KICKOFF + 1 * MIN);
     t.stop();
     assert.deepEqual(t.events, []);
   }

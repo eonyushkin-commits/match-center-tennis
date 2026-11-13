@@ -7,36 +7,25 @@ import { after, before, test } from 'node:test';
 import { createFeed } from '../src/core/feed.mjs';
 import { createHandler, startServer } from '../src/core/server.mjs';
 import { openSettings } from '../src/core/settings.mjs';
+import { ANDREEVA, SHNAIDER, board, comp, event, single } from './helpers/espn-data.mjs';
 
 let srv;
 let base;
 
-const fm = {
-  leagues: [
-    { id: 47, name: 'Premier League', ccode: 'ENG', matches: [{
-      id: 100, home: { id: 1, name: 'Fulham', score: 1 }, away: { id: 2, name: 'Man United', score: 1 },
-      status: { utcTime: '2026-09-20T15:30:00Z', started: true, finished: false, liveTime: { short: '67’' } },
-    }] },
-    { id: 55, name: 'Serie A', ccode: 'ITA', matches: [] },
-  ],
-};
-const ru = { Participants: { 1: 'Фулхэм', 2: 'Манчестер Юнайтед' }, TournamentTemplates: { 47: 'Премьер-Лига' }, CountryCodes: { ENG: 'Англия' } };
-const allLeagues = {
-  international: [{ ccode: 'INT', localizedName: 'Международный', leagues: [{ id: 42, name: 'Champions League', localizedName: 'Лига Чемпионов' }] }],
-  countries: [{ ccode: 'RUS', localizedName: 'Россия', leagues: [{ id: 338, name: '1. Division', localizedName: 'ФНЛ' }, { id: 9123, name: 'PFL' }] }],
-};
+const data = board({ wta: [event('382-2026', 'WTA Finals', {
+  'womens-singles': [comp(100, '2026-09-20T15:30Z', single(ANDREEVA), single(SHNAIDER), { state: 'in', sets: [[6, 2], [4, 3]], round: 'Semifinal' })],
+})] });
 const snapshot = {
   ready: true, updatedAt: 1, channels: [],
-  streams: [{ title: 'Фулхэм — Манчестер Юнайтед', teams: ['фулхэм', 'манчестер юнайтед'], status: 'started', time: null, url: 'u', embed: 'e', channel: 'X' }],
+  streams: [{ title: 'Мирра Андреева — Диана Шнайдер', teams: ['мирра андреева', 'диана шнайдер'], doubles: false, status: 'started', time: null, url: 'u', embed: 'e', channel: 'X' }],
 };
 
 before(async () => {
   const settings = await openSettings(await mkdtemp(path.join(os.tmpdir(), 'mc-server-')));
   const poller = Object.assign(new EventEmitter(), { snapshot: () => snapshot, retry() {} });
-  const fotmob = { day: async () => fm, names: async () => ru, leagues: async () => allLeagues };
-  const details = async (id) => ({ state: 'live', events: [], id });
-  const feed = createFeed({ settings, poller, fotmob, details, version: 'test' });
-  const handler = createHandler({ settings, poller, fotmob, feed });
+  const espn = { day: async () => data, refresh() {} };
+  const feed = createFeed({ settings, poller, espn, version: 'test' });
+  const handler = createHandler({ settings, poller, espn, feed });
   ({ server: srv, url: base } = await startServer(handler));
 });
 after(() => srv.close());
@@ -58,35 +47,36 @@ async function events(query, names) {
   return got;
 }
 
-test('/api/events: расписание — турниры из настроек, русские названия, привязанный эфир; каналы; события матча', async () => {
-  const { day: j, status, details } = await events('date=20260920&tz=Europe/Moscow&match=100', ['day', 'status', 'details']);
+test('/api/events: расписание — турнир и разряд, счёт по сетам, привязанный эфир; состояние каналов', async () => {
+  const { day: j, status } = await events('date=20260920&tz=Europe/Moscow', ['day', 'status']);
   assert.equal(status.version, 'test');
   assert.equal(status.vk.streamCount, 1);
-  assert.deepEqual(details, { state: 'live', events: [], id: '100' });
   assert.equal(j.leagues.length, 1);
-  assert.equal(j.leagues[0].name, 'Премьер-Лига');
+  assert.deepEqual([j.leagues[0].name, j.leagues[0].country], ['WTA Finals', 'WTA · одиночный разряд']);
   const m = j.leagues[0].matches[0];
-  assert.equal(m.home.name, 'Фулхэм');
-  assert.equal(m.liveTime, '67’');
+  assert.deepEqual([m.home.name, m.liveTime, m.round, m.home.score], ['Mirra Andreeva', '2-й сет', 'Полуфинал', 1]);
   assert.deepEqual(m.streams.map((s) => s.url), ['u']);
 });
 
-test('/api/leagues: «страна · турнир» по-русски, у международных без страны', async () => {
-  assert.deepEqual(await (await fetch(`${base}/api/leagues`)).json(), { 42: 'Лига Чемпионов', 338: 'Россия · ФНЛ', 9123: 'Россия · PFL' });
+test('/api/settings: вместе с настройками — список разрядов', async () => {
+  const s = await (await fetch(`${base}/api/settings`)).json();
+  assert.deepEqual(s.knownLeagues.map((l) => l.id), [1, 2, 3, 4]);
+  assert.deepEqual(s.leagues, [1, 2], 'по умолчанию — одиночные разряды');
+  assert.equal((await fetch(`${base}/api/leagues`)).status, 404);
 });
 
 test('/api/events: неверные параметры — 400, а не падение', async () => {
   assert.equal((await fetch(`${base}/api/events?date=2026-09-20`)).status, 400);
   assert.equal((await fetch(`${base}/api/events?date=20260920&tz=Mars/Olympus`)).status, 400);
-  assert.equal((await fetch(`${base}/api/events?date=20260920&match=x`)).status, 400);
 });
 
 test('/api/settings: сохранение и проверка входных данных', async () => {
   const put = (body, type = 'application/json') => fetch(`${base}/api/settings`, { method: 'PUT', headers: { 'Content-Type': type }, body });
-  const ok = await put(JSON.stringify({ favorites: [{ id: 1, name: 'Фулхэм' }] }));
+  const ok = await put(JSON.stringify({ favorites: [{ id: 9820, name: 'Mirra Andreeva' }] }));
   assert.equal(ok.status, 200);
-  assert.deepEqual((await ok.json()).favorites, [{ id: 1, name: 'Фулхэм' }]);
+  assert.deepEqual((await ok.json()).favorites, [{ id: 9820, name: 'Mirra Andreeva' }]);
   assert.equal((await put('{"leagues": []}')).status, 400);
+  assert.equal((await put('{"leagues": [47]}')).status, 400, 'неизвестный разряд');
   assert.equal((await put('not json')).status, 400);
   assert.equal((await put('{}', 'text/plain')).status, 415, 'форма с чужой страницы не пройдёт');
   const { day } = await events('date=20260920&tz=UTC', ['day']);
@@ -107,6 +97,7 @@ test('страница отдаётся с CSP, лишние пути — 404', 
   const page = await fetch(`${base}/`);
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-security-policy'), /frame-src https:\/\/vkvideo\.ru/);
+  assert.match(page.headers.get('content-security-policy'), /img-src 'self' data: https:\/\/a\.espncdn\.com;/);
   assert.equal((await fetch(`${base}/../package.json`)).status, 404);
   assert.equal((await fetch(`${base}/src/core/settings.mjs`)).status, 404);
 });

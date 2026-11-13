@@ -11,6 +11,4 @@ contextBridge.exposeInMainWorld('mc', {
   onOpenMatch: (cb) => ipcRenderer.on('open-match', (_e, m) => cb(m)),
   // окно спрятано в трей
   onToTray: (cb) => ipcRenderer.on('to-tray', () => cb()),
-  // окно плеера: «поверх всех окон»
-  setOnTop: (value) => ipcRenderer.invoke('player:on-top', value),
 });

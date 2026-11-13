@@ -1,5 +1,5 @@
 // Разбор видео VK в эфиры матч-центра — общий для API и для чтения страницы канала.
-import { parseTeams } from './match.mjs';
+import { parsePair } from './match.mjs';
 import { expect, isObject } from './shape.mjs';
 
 const known = (v) => isObject(v) && Number.isFinite(v.owner_id) && Number.isFinite(v.id) && typeof v.title === 'string';
@@ -21,6 +21,7 @@ export function toItems(videos, ch) {
     .filter((v) => v.live_status && v.title)
     .map((v) => {
       const t = v.live_start_time || v.date;
+      const pair = parsePair(v.title);
       return {
         title: v.title,
         url: `https://vkvideo.ru/live${v.owner_id}_${v.id}`,
@@ -31,7 +32,8 @@ export function toItems(videos, ch) {
         spectators: Number.isFinite(v.spectators) ? v.spectators : null, // смотрят прямо сейчас — только у эфиров
         duration: v.duration > 0 ? v.duration : null, // длина записи, с
         channel: ch.label || ch.screenName,
-        teams: parseTeams(v.title),
+        teams: pair?.teams ?? null,
+        doubles: !!pair?.doubles, // эфир парного матча: «Гуо/Младенович — Мертенс/Чжан Шуай»
       };
     })
     .filter((s) => s.teams);

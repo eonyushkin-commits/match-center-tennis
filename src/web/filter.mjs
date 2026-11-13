@@ -6,12 +6,12 @@ export const scoresHidden = (m, { hideScores, revealed }) => !!hideScores && !re
 
 // ★ и 🔔 прямо в данных дня — чтобы не ждать ответа сервера после клика
 export function markFavorites(day, settings) {
-  const teams = new Set(settings.favorites.map((f) => f.id));
+  const players = new Set(settings.favorites.map((f) => f.id));
   const matches = new Set(settings.favoriteMatches.map((f) => f.id));
   for (const lg of day?.leagues || [])
     for (const m of lg.matches) {
       m.remind = matches.has(m.id);
-      m.favorite = teams.has(m.home.id) || teams.has(m.away.id) || m.remind;
+      m.favorite = m.remind || [...m.home.ids, ...m.away.ids].some((id) => players.has(id));
     }
 }
 
@@ -28,12 +28,14 @@ export function keepSection(secs, rowKey, hostKey) {
 }
 
 // Разделы списка: «Сейчас в эфире» (только сегодня) и турниры.
-// pinned — ключи строк с открытым плеером или подробностями: их не прячет никакой фильтр.
+// pinned — ключи строк с открытым плеером: их не прячет никакой фильтр.
+// Поиск — по турниру и по игрокам: фамилия в паре, полное имя, русское написание из словаря.
 // byTime — матчи идут по времени начала, а не турнир за турниром в порядке из настроек.
 export function sections({ day, isToday, filters: f, q, pinned, byTime }) {
   q = q.trim().toLowerCase();
+  const who = (m) => [m.home, m.away].flatMap((t) => [t.name, ...t.players.flatMap((p) => [p.name, p.ru?.name])]).filter(Boolean).join(' ').toLowerCase();
   const hit = (m, lg) => (!f.streams || m.streams.length) && (!f.live || isLive(m)) && (!f.favorites || m.favorite)
-    && (!q || `${lg.name} ${lg.country}`.toLowerCase().includes(q) || `${m.home.name} ${m.away.name}`.toLowerCase().includes(q));
+    && (!q || `${lg.name} ${lg.country}`.toLowerCase().includes(q) || who(m).includes(q));
   const out = [];
 
   // без блока (не сегодня или фильтр «Идут сейчас») остаются только закреплённые строки

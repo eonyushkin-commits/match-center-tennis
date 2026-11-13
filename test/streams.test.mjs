@@ -133,13 +133,13 @@ test('toItems: зрители эфира и дата создания видео
 });
 
 test('matchStreams: эфиры впереди и по времени начала, записи — по дате создания', () => {
-  const m = { home: { id: 1 }, away: { id: 2 }, status: { utcTime: '2026-09-20T15:30:00Z', finished: false } };
+  const m = { utcTime: '2026-09-20T15:30:00Z', finished: false, doubles: false };
   const at = (hhmm) => Date.parse(`2026-09-20T${hhmm}:00Z`);
   const s = (channel, status, extra) => ({
-    title: 'Фулхэм — Манчестер Юнайтед', teams: parseTeams('Фулхэм — Манчестер Юнайтед'), status, channel, url: channel,
+    title: 'Синнер — Алькарас', teams: parseTeams('Синнер — Алькарас'), doubles: false, status, channel, url: channel,
     time: at('15:00'), created: at('10:00'), spectators: null, ...extra,
   });
-  const order = matchStreams(m, ['фулхэм'], ['манчестер юнайтед'], [
+  const order = matchStreams(m, [['синнер']], [['алькарас']], [
     s('запись-поздняя', 'finished', { created: at('14:00') }),
     s('эфир-поздний', 'started', { time: at('15:20'), spectators: 5200 }),
     s('запись-ранняя', 'finished', { created: at('09:00') }),

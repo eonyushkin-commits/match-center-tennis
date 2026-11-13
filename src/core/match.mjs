@@ -1,30 +1,33 @@
-// Сопоставление заголовков VK-эфиров с матчами FotMob.
+// Сопоставление заголовков VK-эфиров с теннисными матчами.
+// э → е: каналы пишут и «Баэс», и «Баес», и «Шувэй», и «Шувей».
 export const norm = (s) => String(s ?? '')
-  .toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  .toLowerCase()
+  .replace(/[à-ɏ]/g, (c) => c.normalize('NFD')[0]) // é → e; кириллицу не трогаем: й и ё — тоже «буква со значком»
+  .replace(/ё/g, 'е').replace(/э/g, 'е')
+  .replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-// Команды ищем в любой части заголовка между «|»: у каналов бывает и
-// «Брайтон — Арсенал | АПЛ 5 тур», и «Смотреть онлайн АПЛ | 5 тур | Брайтон – Арсенал».
-// Между командами — тире, дефис, vs, «против» или отдельная буква x (латинская, русская, ×).
-// Лишние слова перед командами («Смотреть онлайн Чемпионшип …») отсекает nameScore.
-export function parseTeams(title) {
-  for (const seg of String(title ?? '').split('|')) {
+// Игроки ищутся в любой части заголовка между «|» или « / »: у каналов бывает и
+// «Мирра Андреева - Диана Шнайдер | Комментатор», и «Соболенко – Свитолина / Итоговый турнир WTA».
+// Между игроками — тире, дефис, vs, «против» или отдельная буква x (латинская, русская, ×).
+// Пара пишется через косую черту без пробелов: «Гуо/Младенович — Мертенс/Чжан Шуай».
+// Лишние слова рядом с именами отсекает nameScore.
+export function parsePair(title) {
+  for (const seg of String(title ?? '').split(/\||\s\/\s/)) {
     const parts = seg.split(/\s+(?:—|–|-|vs\.?|против|x|х|×)\s+/i);
     if (parts.length !== 2) continue;
     const teams = parts.map((p) => norm(p.replace(/\(.*?\)|\d+\s*:\s*\d+/g, '')));
-    if (teams.every(Boolean)) return teams;
+    if (teams.every(Boolean)) return { teams, doubles: /\S\/\S/.test(seg) };
   }
   return null;
 }
+export const parseTeams = (title) => parsePair(title)?.teams ?? null;
 
-// Слова, которые есть в названиях нескольких клубов. Совпадение только по ним ничего не значит:
-// «Юнайтед — Сити» — это и МЮ, и Ньюкасл, и Лидс, и половина Чемпионшипа.
-const GENERIC = new Set([
-  'фк', 'fc', 'юнайтед', 'united', 'сити', 'city', 'таун', 'town', 'альбион', 'albion',
-  'уондерерс', 'wanderers', 'рейнджерс', 'rangers', 'каунти', 'county', 'роверс', 'rovers',
-  'атлетик', 'athletic', 'вест', 'west', 'манчестер', 'manchester', 'шеффилд', 'sheffield',
-  'бристоль', 'bristol', 'ман', 'man',
-]);
-const specific = (words) => words.some((w) => !GENERIC.has(w));
+const LATIN = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p',
+  р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '', ю: 'yu', я: 'ya',
+};
+// «басаваредди» → «basavareddi»: игрока, которого нет в словаре русских имён, узнаём по латинице
+export const latinize = (s) => s.replace(/[а-я]/g, (c) => LATIN[c] ?? c);
 
 function bigrams(s) {
   const out = new Set();
@@ -33,8 +36,7 @@ function bigrams(s) {
   return out;
 }
 
-// Нечёткое сравнение (опечатки, «Миллуол»/«Миллуолл»). Ниже 0.72 считаем разными командами,
-// иначе «Манчестер Сити» ≈ «Манчестер Юнайтед».
+// Нечёткое сравнение (опечатки, «Дабровски»/«Дабровский»). Ниже 0.72 считаем разными игроками.
 function dice(a, b) {
   const A = bigrams(a), B = bigrams(b);
   let inter = 0;
@@ -43,37 +45,43 @@ function dice(a, b) {
   return d >= 0.72 ? d : 0;
 }
 
-// a — название из FotMob, b — половина заголовка эфира (может содержать лишние слова)
+// a — имя игрока (фамилия или полное), b — половина заголовка эфира (может содержать лишние слова)
 export function nameScore(a, b) {
   if (!a || !b) return 0;
   if (a === b) return 1;
   const ta = a.split(' '), tb = b.split(' ');
-  // всё название команды есть в заголовке — «смотреть манчестер сити» ⊃ «манчестер сити»
+  // всё имя есть в заголовке — «арина соболенко итоговый турнир wta» ⊃ «соболенко»
   if (ta.every((x) => tb.includes(x))) return 0.9;
-  // из одних общих слов («Манчестер», «Юнайтед») команду не узнать — даже нечётко
-  if (!specific(tb)) return 0;
-  // заголовок — сокращение названия («Вулверхэмптон» из «Вулверхэмптон Уондерерс»)
+  // заголовок — часть имени («меличар» из «меличар мартинес»)
   if (tb.every((x) => ta.includes(x))) return 0.9;
   let score = dice(a, b);
-  // сравниваем название с каждым отрезком заголовка той же длины в словах
+  // сравниваем имя с каждым отрезком заголовка той же длины в словах
   for (let i = 0; i + ta.length <= tb.length; i++)
     score = Math.max(score, 0.85 * dice(a, tb.slice(i, i + ta.length).join(' ')));
   return score;
 }
 
-// Все варианты названия команды: русское из FotMob, английские и алиасы из настроек
-export function createNamer(ru, aliases = {}) {
+// Все написания игрока: русские фамилия и полное имя из словаря, английские из ESPN, варианты из настроек.
+// player — { name, last, enName, enLast }
+export function createNamer(aliases = {}) {
   const aliasIndex = new Map(Object.entries(aliases).map(([k, v]) => [norm(k), v.map(norm)]));
-  return (team) => {
-    const names = [ru?.Participants?.[team.id], team.name, team.shortName, team.longName].filter(Boolean).map(norm);
+  return (player) => {
+    const names = [player.last, player.name, player.enLast, player.enName].filter(Boolean).map(norm);
     for (const n of [...names]) names.push(...(aliasIndex.get(n) || []));
     return [...new Set(names)].filter(Boolean);
   };
 }
 
-const best = (names, s) => Math.max(0, ...names.map((n) => nameScore(n, s)));
+const best = (names, s, lat) => Math.max(0, ...names.map((n) => Math.max(nameScore(n, s), nameScore(n, lat))));
+// Сторона матча — один игрок или пара: в половине заголовка должны найтись все
+function sideScore(players, s) {
+  if (!players.length) return 0;
+  const lat = latinize(s);
+  return Math.min(...players.map((names) => best(names, s, lat)));
+}
+
 const RANK = { started: 0, upcoming: 1, finished: 2, failed: 3 };
-const DAY = 24 * 3600e3;
+const HOUR = 3600e3;
 // Внутри статуса: записи — по дате создания видео, идущие и запланированные — по времени начала
 // (не по зрителям: иначе кнопки меняются местами при каждом обновлении)
 function withinStatus(x, y) {
@@ -81,23 +89,26 @@ function withinStatus(x, y) {
   return (x.time ?? 0) - (y.time ?? 0);
 }
 
-export function matchStreams(match, homeNames, awayNames, streams) {
-  const kickoff = Date.parse(match.status.utcTime);
+// match — { utcTime, finished, doubles }; home, away — написания каждого игрока стороны: [[…], […]]
+export function matchStreams(match, home, away, streams) {
+  const kickoff = Date.parse(match.utcTime);
   return streams
-    // time — дата создания эфира: некоторые каналы создают его за несколько дней до матча.
-    // time === null — VK не прислал дату, проверяем только названия.
-    .filter((s) => s.teams && (s.time === null || (s.time > kickoff - 5 * DAY && s.time < kickoff + 6 * 3600e3)))
+    // time — когда эфир создан или назначен: каналы заводят его за несколько часов, иногда за день.
+    // Окно короче футбольного: на итоговом турнире те же соперники могут встретиться снова через
+    // несколько дней. time === null — VK не прислал дату, проверяем только имена.
+    .filter((s) => s.teams && (s.time === null || (s.time > kickoff - 48 * HOUR && s.time < kickoff + 12 * HOUR)))
+    // эфир пары («Гуо/Младенович — …») к одиночному матчу не относится, даже если фамилии совпали
+    .filter((s) => match.doubles || !s.doubles)
     .map((s) => {
       const [a, b] = s.teams;
-      const straight = Math.min(best(homeNames, a), best(awayNames, b));
-      const swapped = Math.min(best(homeNames, b), best(awayNames, a));
+      const straight = Math.min(sideScore(home, a), sideScore(away, b));
+      const swapped = Math.min(sideScore(home, b), sideScore(away, a));
       return { ...s, score: Math.max(straight, swapped) };
     })
     .filter((s) => s.score > 0)
-    // Запланированный эфир у завершённого матча — резервный, который так и не запустили
-    // («РЕЗЕРВ. Фулхэм – Манчестер Юнайтед»): смотреть там нечего.
-    .filter((s) => !(match.status.finished && s.status === 'upcoming'))
+    // Запланированный эфир у завершённого матча — резервный, который так и не запустили: смотреть там нечего.
+    .filter((s) => !(match.finished && s.status === 'upcoming'))
     // Порядок: идущие (всегда впереди), затем запланированные, затем записи
     .sort((x, y) => RANK[x.status] - RANK[y.status] || withinStatus(x, y) || y.score - x.score)
-    .map(({ teams, score, ...s }) => s);
+    .map(({ teams, doubles, score, ...s }) => s);
 }

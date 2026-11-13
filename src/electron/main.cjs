@@ -1,18 +1,18 @@
 // Главный процесс: поднимает ядро матч-центра, показывает окно, живёт в трее, уведомляет о матчах
-// избранных команд, открывает плеер в отдельных окнах и обновляется из GitHub Releases.
+// избранных игроков, открывает плеер в отдельных окнах и обновляется из GitHub Releases.
 const {
-  app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, nativeTheme, net, screen, shell,
+  app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeTheme, net, screen, shell,
 } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { keepContentRatio } = require('./aspect.cjs');
 const { dataDir } = require('./data-dir.cjs');
 
-const APP_ID = 'ru.sportcenter.matchcenter';
-const TITLE = 'Матч-центр | Английский футбол';
+const APP_ID = 'ru.sportcenter.tenniscenter';
+const NAME = 'Матч-центр Теннис';
+const TITLE = 'Матч-центр | Теннис';
 const PRELOAD = path.join(__dirname, 'preload.cjs');
-const ICON = path.join(__dirname, 'icon.png');
-const RELEASES = 'https://github.com/eonyushkin-commits/match-center-english-football/releases';
+const RELEASES = 'https://github.com/eonyushkin-commits/match-center-tennis/releases';
 const load = (file) => import(pathToFileURL(path.join(__dirname, '..', file)).href);
 
 // во внешний браузер отдаём только обычные веб-ссылки
@@ -21,7 +21,7 @@ function openExternal(url) {
 }
 
 function fail(e) {
-  dialog.showErrorBox('Матч-центр не запустился', String(e?.stack || e));
+  dialog.showErrorBox(`${NAME} не запустился`, String(e?.stack || e));
   app.exit(1);
 }
 
@@ -61,7 +61,7 @@ function openMatch(date, id) {
 
 function notify({ title, body, onClick }) {
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title, body, icon: ICON });
+  const n = new Notification({ title, body });
   notifications.add(n);
   n.on('close', () => notifications.delete(n));
   n.on('click', () => {
@@ -78,7 +78,8 @@ async function start() {
   ]);
   mc = await createMatchCenter({
     dataDir: app.getPath('userData'),
-    fetchImpl: net.fetch, // сетевой стек Chromium: системный прокси и сертификаты как в браузере
+    fetchImpl: net.fetch, // VK — сетевой стек Chromium: системный прокси и сертификаты как в браузере
+    espnFetch: (...args) => globalThis.fetch(...args), // ESPN — встроенный fetch Node.js (см. app.mjs)
     pageReader,
     version: app.getVersion(),
   });
@@ -92,12 +93,10 @@ async function start() {
     show: false,
     // запуск сразу в трей: без этого страница считает себя видимой и подписывается на ленту впустую
     paintWhenInitiallyHidden: !toTray,
-    icon: ICON,
     title: `${TITLE} · v${app.getVersion()}`,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1116' : '#f3f5f8',
     autoHideMenuBar: true,
-    // Сессия только в памяти: вход в VK внутри плеера не сохранится между запусками —
-    // залогиненному пользователю VK отвечает на встроенные трансляции «Видео недоступно».
+    // Сессия VK только в памяти: вход не сохраняется между запусками.
     // Тема, фильтры и избранное хранятся в настройках приложения, а не в браузере.
     webPreferences: { partition: 'matchcenter', spellcheck: false, preload: PRELOAD },
   });
@@ -105,19 +104,28 @@ async function start() {
   win.on('page-title-updated', (e) => e.preventDefault()); // заголовок с версией, а не <title> страницы
   if (!toTray) win.once('ready-to-show', () => win.show());
 
-  // Своя страница плеера открывается отдельным окном приложения, всё остальное — во внешнем браузере
-  const playerPage = `${mc.url}/player.html`;
+  // Запрос страницы плеера преобразуем в прямое открытие официального плеера VK.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(playerPage)) {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          width: 800, height: 450, minWidth: 320, minHeight: 180, useContentSize: true, alwaysOnTop: true,
-          backgroundColor: '#000000', autoHideMenuBar: true, icon: ICON,
-          // мост с приложением («Поверх окон») сам в новое окно не переходит
-          webPreferences: { partition: 'matchcenter', preload: PRELOAD },
-        },
-      };
+    if (new URL(url).origin === mc.url && new URL(url).pathname === '/player.html') {
+      const params = new URL(url).searchParams;
+      let source;
+      try { source = new URL(params.get('src')); } catch { return { action: 'deny' }; }
+      if (source.protocol !== 'https:' || !/^(vkvideo\.ru|vk\.com|vk\.ru)$/.test(source.hostname) || source.pathname !== '/video_ext.php') return { action: 'deny' };
+      // VK отказывает iframe на локальной странице. Официальный плеер как
+      // самостоятельная страница воспроизводит тот же эфир без подмены запросов.
+      const player = new BrowserWindow({
+        width: 800, height: 450, minWidth: 320, minHeight: 180, useContentSize: true,
+        alwaysOnTop: true, backgroundColor: '#000', autoHideMenuBar: true,
+        title: params.get('title') || 'Трансляция',
+        webPreferences: { partition: 'matchcenter', nodeIntegration: false, contextIsolation: true, sandbox: true },
+      });
+      keepContentRatio(player, 16 / 9);
+      player.webContents.setWindowOpenHandler(({ url: target }) => { openExternal(target); return { action: 'deny' }; });
+      player.webContents.on('will-navigate', (e, target) => {
+        if (target !== source.href) { e.preventDefault(); openExternal(target); }
+      });
+      player.loadURL(source.href).catch((e) => console.error('VK player:', e.message));
+      return { action: 'deny' };
     }
     openExternal(url);
     return { action: 'deny' };
@@ -129,15 +137,6 @@ async function start() {
       e.preventDefault();
       openExternal(url);
     }
-  });
-  win.webContents.on('did-create-window', (child) => {
-    child.setMenuBarVisibility(false);
-    keepContentRatio(child, 16 / 9); // видео занимает окно целиком, без чёрных полос
-    child.webContents.setWindowOpenHandler(({ url }) => {
-      openExternal(url);
-      return { action: 'deny' };
-    });
-    keepLocal(child.webContents);
   });
   keepLocal(win.webContents);
 
@@ -159,7 +158,7 @@ async function start() {
     win.hide();
     win.webContents.send('to-tray'); // страница закроет плеер
     if (!mc.settings.get().ui.trayHintShown) {
-      notify({ title: 'Матч-центр работает в трее', body: 'Уведомления о матчах избранных команд продолжат приходить. Выйти — правой кнопкой по значку в трее.', onClick: showWindow });
+      notify({ title: `${NAME} работает в трее`, body: 'Уведомления о матчах избранных игроков продолжат приходить. Выйти — правой кнопкой по значку в трее.', onClick: showWindow });
       mc.settings.update({ ui: { trayHintShown: true } }).catch(() => {});
     }
   });
@@ -172,10 +171,12 @@ async function start() {
     const title = `${match.home.name} — ${match.away.name}`;
     const minutes = Math.max(1, Math.round((Date.parse(match.utcTime) - Date.now()) / 60e3));
     const live = match.streams.find((x) => x.status === 'started');
-    const body = kind === 'soon' ? `Начало через ${minutes} мин` : `Матч начался${live ? ` · смотреть: ${live.channel}` : ''}`;
+    const body = kind === 'soon' ? `Начало по расписанию через ${minutes} мин` : `Матч начался${live ? ` · смотреть: ${live.channel}` : ''}`;
     notify({ title, body, onClick: () => openMatch(date, match.id) });
   });
 
+  // своей иконки у приложения нет: значок для трея — тот же, что у самой программы
+  trayImage = await app.getFileIcon(process.execPath, { size: 'small' }).catch(() => null);
   mc.settings.on('change', applyAppSettings);
   applyAppSettings(mc.settings.get());
 
@@ -184,13 +185,13 @@ async function start() {
 }
 
 // ---------- трей и автозапуск ----------
+let trayImage = null;
 function applyAppSettings(s) {
-  if (s.tray && !tray) {
-    const image = nativeImage.createFromPath(ICON);
-    tray = new Tray(image.resize({ width: 16, height: 16, quality: 'best' }));
-    tray.setToolTip('Матч-центр');
+  if (s.tray && !tray && trayImage) {
+    tray = new Tray(trayImage);
+    tray.setToolTip(NAME);
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Открыть Матч-центр', click: showWindow },
+      { label: `Открыть ${NAME}`, click: showWindow },
       { type: 'separator' },
       { label: 'Выход', click: () => app.quit() },
     ]));
@@ -247,11 +248,6 @@ ipcMain.handle('update:install', () => {
   quitting = true;
   updater.quitAndInstall(true, true); // тихо поставить и сразу открыть новую версию
 });
-ipcMain.handle('player:on-top', (e, value) => {
-  const w = BrowserWindow.fromWebContents(e.sender);
-  if (w && w !== win) w.setAlwaysOnTop(!!value);
-  return w?.isAlwaysOnTop();
-});
 
 async function checkUpdatesNow() {
   if (!updater) {
@@ -274,7 +270,7 @@ async function checkUpdatesNow() {
 // ---------- меню ----------
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
-    label: 'Матч-центр',
+    label: NAME,
     submenu: [
       { role: 'reload', label: 'Обновить страницу' },
       { label: 'Папка с настройками', click: () => shell.openPath(app.getPath('userData')) },

@@ -20,6 +20,7 @@ function invalid(message) {
   return Object.assign(new Error(message), { status: 400 });
 }
 
+const KNOWN_LEAGUES = new Set(defaults.knownLeagues.map((l) => l.id)); // разряды: ATP/WTA, одиночный/парный
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 // Итоговые настройки, с которыми работает приложение
@@ -46,7 +47,7 @@ export function resolve(user = {}) {
   const ui = user.ui && typeof user.ui === 'object' ? user.ui : {};
   return {
     channels: [...channels.values()],
-    leagues: Array.isArray(user.leagues) && user.leagues.length ? user.leagues : defaults.leagues,
+    leagues: Array.isArray(user.leagues) && user.leagues.some((id) => KNOWN_LEAGUES.has(id)) ? user.leagues.filter((id) => KNOWN_LEAGUES.has(id)) : defaults.leagues,
     teamAliases,
     userAliases,
     favorites: Array.isArray(user.favorites) ? user.favorites : [],
@@ -109,13 +110,13 @@ export function applyPatch(user, patch) {
 
   if (patch.leagues !== undefined) {
     if (!Array.isArray(patch.leagues)) throw invalid('leagues: ожидался список');
-    const ids = [...new Set(patch.leagues.map(Number))].filter((n) => Number.isInteger(n) && n > 0);
-    if (!ids.length) throw invalid('Выберите хотя бы один турнир');
+    const ids = [...new Set(patch.leagues.map(Number))].filter((n) => KNOWN_LEAGUES.has(n));
+    if (!ids.length) throw invalid('Выберите хотя бы один разряд');
     next.leagues = sameList(ids, defaults.leagues) ? undefined : ids;
   }
 
   if (patch.userAliases !== undefined) {
-    if (!isAliasMap(patch.userAliases)) throw invalid('Написания команд: ожидались списки строк');
+    if (!isAliasMap(patch.userAliases)) throw invalid('Написания игроков: ожидались списки строк');
     const clean = Object.fromEntries(Object.entries(patch.userAliases)
       .map(([team, names]) => [team.trim(), names.map((n) => n.trim()).filter(Boolean)])
       .filter(([team, names]) => team && names.length));

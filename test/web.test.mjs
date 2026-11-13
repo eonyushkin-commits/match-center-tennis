@@ -3,15 +3,19 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { keepSection, markFavorites, scoresHidden, sections } from '../src/web/filter.mjs';
 import { addDays, audience, embedUrl, esc, parseAliases, parseChannel, dateStrip, inDateRange } from '../src/web/format.mjs';
-import { detailsHtml, detailsToggleHtml, notices, rowHtml, statusBadge, updateHtml } from '../src/web/view.mjs';
+import { notices, rowHtml, sectionHeadHtml, statusBadge, updateHtml } from '../src/web/view.mjs';
 
-const stream = (o) => ({ status: 'started', channel: 'Sportcast', title: 'Челси — Арсенал', url: 'https://vkvideo.ru/video-1_2', embed: 'https://vkvideo.ru/video_ext.php?oid=-1&id=2&hash=h', ...o });
+const stream = (o) => ({ status: 'started', channel: 'Sportcast', title: 'Синнер — Алькарас', url: 'https://vkvideo.ru/video-1_2', embed: 'https://vkvideo.ru/video_ext.php?oid=-1&id=2&hash=h', ...o });
+// сторона матча: игрок (id — номер для ★) или пара (id нет, ids — оба)
+const side = (id, name, o = {}) => ({ id, ids: id == null ? [] : [id], name, players: [{ id, name, flag: 'https://a.espncdn.com/x.png' }], seed: null, sets: [], score: null, winner: false, serving: false, ...o });
+const games = (...list) => list.map((g) => (typeof g === 'object' ? g : { games: g, tiebreak: null }));
 const match = (o = {}) => ({
-  id: 1, utcTime: '2026-09-20T14:00:00Z', started: false, finished: false, cancelled: false,
-  home: { id: 10, name: 'Челси', score: 0 }, away: { id: 20, name: 'Арсенал', score: 0 }, streams: [], ...o,
+  id: 1, utcTime: '2026-09-20T14:00:00Z', timeKnown: true, doubles: false, round: 'Финал', court: 'Center Court',
+  started: false, finished: false, cancelled: false,
+  home: side(10, 'Jannik Sinner'), away: side(20, 'Carlos Alcaraz'), streams: [], ...o,
 });
 const view = (o = {}) => ({ favIds: new Set(), hidden: () => false, player: null, ...o });
-const row = (m) => rowHtml({ key: `m:${m.id}`, m, lg: { name: 'Премьер-лига' } }, view());
+const row = (m) => rowHtml({ key: `m:${m.id}`, m, lg: { name: 'ATP Finals', country: 'ATP · одиночный разряд' } }, view());
 
 // ---------- format ----------
 test('esc экранирует всё, что ломает разметку', () => {
@@ -46,8 +50,8 @@ test('audience: зрители только у идущего эфира', () =>
   assert.equal(audience(stream({ spectators: 0 })), null);
 });
 
-test('embedUrl: только https-плеер VK, без __ref', () => {
-  assert.equal(embedUrl(stream({ embed: 'https://vkvideo.ru/video_ext.php?oid=-1&id=2&hash=h&__ref=x' })), 'https://vkvideo.ru/video_ext.php?oid=-1&id=2&hash=h');
+test('embedUrl: только https-плеер VK, сохраняет параметры официальной ссылки', () => {
+  assert.equal(embedUrl(stream({ embed: 'https://vkvideo.ru/video_ext.php?oid=-1&id=2&hash=h&__ref=x' })), 'https://vkvideo.ru/video_ext.php?oid=-1&id=2&hash=h&__ref=x');
   assert.equal(embedUrl(stream({ embed: 'http://vkvideo.ru/video_ext.php' })), null);
   assert.equal(embedUrl(stream({ embed: 'https://evil.example/vkvideo.ru' })), null);
   assert.equal(embedUrl(stream({ embed: 'не ссылка' })), null);
@@ -55,17 +59,17 @@ test('embedUrl: только https-плеер VK, без __ref', () => {
 });
 
 test('parseChannel понимает ссылки и @имя', () => {
-  for (const s of ['vkvideo.ru/@pl_forever', 'https://vkvideo.ru/@pl_forever/lives', 'https://www.vk.com/video/@pl_forever', '@pl_forever', ' pl_forever '])
-    assert.equal(parseChannel(s), 'pl_forever', s);
+  for (const s of ['vkvideo.ru/@tennis_bolshe', 'https://vkvideo.ru/@tennis_bolshe/lives', 'https://www.vk.com/video/@tennis_bolshe', 'https://vk.ru/tennis_bolshe', '@tennis_bolshe', ' tennis_bolshe '])
+    assert.equal(parseChannel(s), 'tennis_bolshe', s);
   assert.equal(parseChannel('https://vkvideo.ru/'), null);
   assert.equal(parseChannel('два слова'), null);
 });
 
-test('parseAliases: строки «Команда = варианты», пустые пропускаются', () => {
-  assert.deepEqual(parseAliases('Манчестер Юнайтед = МЮ, Ман Юнайтед\n\n Челси=Челси Лондон ').aliases,
-    { 'Манчестер Юнайтед': ['МЮ', 'Ман Юнайтед'], Челси: ['Челси Лондон'] });
-  assert.match(parseAliases('Челси').error, /Не понял строку «Челси»/);
-  assert.match(parseAliases('Челси = ').error, /Челси =/);
+test('parseAliases: строки «Игрок = варианты», пустые пропускаются', () => {
+  assert.deepEqual(parseAliases('Соболенко = Сабаленка, Арина С.\n\n Samson=Самсон ').aliases,
+    { 'Соболенко': ['Сабаленка', 'Арина С.'], Samson: ['Самсон'] });
+  assert.match(parseAliases('Синнер').error, /Не понял строку «Синнер»/);
+  assert.match(parseAliases('Синнер = ').error, /Синнер =/);
 });
 
 // ---------- filter ----------
@@ -78,20 +82,21 @@ test('scoresHidden: только в режиме без спойлеров, у �
   assert.equal(scoresHidden(match({ finished: true }), { hideScores: false, revealed: new Set() }), false);
 });
 
-test('markFavorites: ★ команды и 🔔 матча делают матч избранным', () => {
+test('markFavorites: ★ игрока (и в паре) и 🔔 матча делают матч избранным', () => {
   const a = match({ id: 1 });
-  const b = match({ id: 2, home: { id: 30, name: 'Фулхэм' }, away: { id: 40, name: 'Брентфорд' } });
-  const c = match({ id: 3, home: { id: 50, name: 'Бёрнли' }, away: { id: 60, name: 'Лутон' } });
-  markFavorites({ leagues: [{ matches: [a, b, c] }] }, { favorites: [{ id: 20 }], favoriteMatches: [{ id: 2 }] });
-  assert.deepEqual([a, b, c].map((m) => [m.favorite, m.remind]), [[true, false], [true, true], [false, false]]);
+  const b = match({ id: 2, home: side(30, 'Taylor Fritz'), away: side(40, 'Ben Shelton') });
+  const c = match({ id: 3, home: side(50, 'Casper Ruud'), away: side(60, 'Tommy Paul') });
+  const d = match({ id: 4, doubles: true, home: side(null, 'Errani / Paolini', { ids: [70, 20] }), away: side(null, 'Perez / Schuurs', { ids: [80, 90] }) });
+  markFavorites({ leagues: [{ matches: [a, b, c, d] }] }, { favorites: [{ id: 20 }], favoriteMatches: [{ id: 2 }] });
+  assert.deepEqual([a, b, c, d].map((m) => [m.favorite, m.remind]), [[true, false], [true, true], [false, false], [true, false]]);
 });
 
 function day() {
   const live = match({ id: 1, started: true, streams: [stream()] });
-  const liveNoStream = match({ id: 2, started: true, home: { id: 30, name: 'Фулхэм' }, away: { id: 40, name: 'Брентфорд' } });
-  const later = match({ id: 3, home: { id: 50, name: 'Бёрнли' }, away: { id: 60, name: 'Лутон' }, favorite: true });
-  const cup = match({ id: 4, finished: true, home: { id: 70, name: 'Лидс' }, away: { id: 80, name: 'Хаддерсфилд' }, streams: [stream({ status: 'finished' })] });
-  return { leagues: [{ id: 47, name: 'Премьер-лига', country: 'Англия', matches: [live, liveNoStream, later] }, { id: 132, name: 'Кубок Англии', country: 'Англия', matches: [cup] }] };
+  const liveNoStream = match({ id: 2, started: true, home: side(30, 'Taylor Fritz'), away: side(40, 'Ben Shelton') });
+  const later = match({ id: 3, home: side(50, 'Casper Ruud'), away: side(60, 'Tommy Paul', { players: [{ id: 60, name: 'Tommy Paul', ru: { name: 'Томми Пол' } }] }), favorite: true });
+  const cup = match({ id: 4, finished: true, home: side(70, 'Mirra Andreeva'), away: side(80, 'Diana Shnaider'), streams: [stream({ status: 'finished' })] });
+  return { leagues: [{ id: 47, name: 'ATP Finals', country: 'ATP · одиночный разряд', matches: [live, liveNoStream, later] }, { id: 132, name: 'WTA Finals', country: 'WTA · одиночный разряд', matches: [cup] }] };
 }
 const NO = { streams: false, live: false, favorites: false };
 const keys = (secs) => secs.map((s) => `${s.key}=${s.rows.map((r) => r.m.id).join(',')}`);
@@ -106,8 +111,9 @@ test('sections: фильтры и поиск, пустой турнир проп
   assert.deepEqual(pick({ filters: { ...NO, streams: true } }), ['live=1', 'lg:47=1', 'lg:132=4']);
   assert.deepEqual(pick({ filters: { ...NO, live: true } }), ['lg:47=1,2']); // без блока «Сейчас в эфире»
   assert.deepEqual(pick({ filters: { ...NO, favorites: true } }), ['lg:47=3']);
-  assert.deepEqual(pick({ q: '  ЛУТОН ' }), ['lg:47=3']);
-  assert.deepEqual(pick({ q: 'кубок' }), ['lg:132=4']);
+  assert.deepEqual(pick({ q: '  RUUD ' }), ['lg:47=3']);
+  assert.deepEqual(pick({ q: 'томми пол' }), ['lg:47=3'], 'по русскому имени из словаря');
+  assert.deepEqual(pick({ q: 'wta' }), ['lg:132=4']);
 });
 
 test('sections: строка с открытым плеером не прячется фильтром', () => {
@@ -117,9 +123,9 @@ test('sections: строка с открытым плеером не пряче�
 test('sections: по времени начала — матчи по времени, одновременные стоят блоком своего турнира', () => {
   const at = (id, time, o) => match({ id, utcTime: `2026-09-20T${time}:00Z`, ...o });
   const d = { leagues: [
-    { id: 47, name: 'Премьер-лига', country: 'Англия', matches: [at(1, '14:00', { favorite: true }), at(2, '14:00'), at(6, '17:00', { favorite: true })] },
-    { id: 48, name: 'Чемпионшип', country: 'Англия', matches: [at(3, '12:00'), at(4, '17:00'), at(7, '14:00')] },
-    { id: 132, name: 'Кубок Англии', country: 'Англия', matches: [at(5, '14:30')] },
+    { id: 47, name: 'ATP Finals', country: 'ATP', matches: [at(1, '14:00', { favorite: true }), at(2, '14:00'), at(6, '17:00', { favorite: true })] },
+    { id: 48, name: 'Stockholm Open', country: 'ATP', matches: [at(3, '12:00'), at(4, '17:00'), at(7, '14:00')] },
+    { id: 132, name: 'WTA Finals', country: 'WTA', matches: [at(5, '14:30')] },
   ] };
   const of = (o) => keys(sections({ day: d, isToday: false, filters: NO, q: '', pinned: new Set(), ...o }));
   assert.deepEqual(of({}), ['lg:47=1,2,6', 'lg:48=3,4,7', 'lg:132=5']);
@@ -140,22 +146,57 @@ test('keepSection: раздел со строкой плеера сохраня�
 });
 
 // ---------- view: строка матча ----------
-test('rowHtml: статус FotMob как есть, у будущего — время и колокольчик', () => {
-  assert.match(row(match({ finished: true, reason: 'AET' })), /<div class="when">AET/);
-  assert.match(row(match({ started: true, liveTime: '67’' })), /<div class="when live">67’/);
-  assert.match(row(match({ cancelled: true })), /Canc\./);
+test('sectionHeadHtml: турнир с разрядом и числом матчей', () => {
+  assert.equal(sectionHeadHtml({ lg: { name: 'WTA <Finals>', country: 'WTA · парный разряд' }, rows: [1, 2] }),
+    'WTA &lt;Finals&gt; <small>WTA · парный разряд</small><span class="count">2</span>');
+  assert.match(sectionHeadHtml({ live: true, rows: [1] }), /^Сейчас в эфире/);
+});
+
+test('rowHtml: статус, у будущего — время и колокольчик; время не назначено — прочерк без колокольчика', () => {
+  assert.match(row(match({ started: true, finished: true, reason: 'Отказ' })), /<div class="when">Отказ/);
+  assert.match(row(match({ started: true, liveTime: '2-й сет' })), /<div class="when live">2-й сет/);
+  assert.match(row(match({ cancelled: true, reason: 'Перенос' })), /Перенос/);
   assert.match(row(match()), /data-remind/);
   assert.doesNotMatch(row(match({ started: true })), /data-remind/);
   assert.match(row(match({ remind: true })), /class="bell on"/);
+  const open = row(match({ timeKnown: false }));
+  assert.match(open, /<div class="when">—<\/div>/);
+  assert.doesNotMatch(open, /data-remind/);
 });
 
-test('rowHtml: без спойлеров вместо счёта «?», победитель не подсвечен', () => {
-  const m = match({ finished: true, home: { id: 10, name: 'Челси', score: 3 }, away: { id: 20, name: 'Арсенал', score: 1 } });
+test('rowHtml: счёт по сетам с тай-брейком, победитель, подача, посев, раунд и корт', () => {
+  const done = row(match({ started: true, finished: true,
+    home: side(10, 'Jannik Sinner', { sets: games(6, { games: 7, tiebreak: 7 }), winner: true, seed: 1 }),
+    away: side(20, 'Carlos Alcaraz', { sets: games(4, { games: 6, tiebreak: 5 }) }) }));
+  assert.match(done, /class="team win">[\s\S]*<small class="seed" title="Номер посева">1<\/small><span class="name">Jannik Sinner<\/span>/, 'посев — перед именем');
+  assert.match(done, /<small class="seed"><\/small><span class="name">Carlos Alcaraz<\/span>/, 'у несеяного — пустое место той же ширины');
+  assert.doesNotMatch(row(match()), /class="seed"/, 'никто не посеян — места под номер нет');
+  assert.match(done, /<span class="set">6<\/span><span class="set">7<sup>7<\/sup><\/span>/);
+  assert.match(done, /<span class="set">4<\/span><span class="set">6<sup>5<\/sup><\/span>/);
+  assert.equal(done.match(/class="team win"/g).length, 1);
+  assert.match(done, /^<div class="lg-tag meta">Финал · Center Court<\/div><div class="when">/, 'раунд и корт — строкой над игроками');
+  const inLive = rowHtml({ key: 'live:1', m: match(), lg: { name: 'ATP Finals', country: 'ATP · одиночный разряд' }, showLeague: true }, view());
+  assert.match(inLive, /^<div class="lg-tag">ATP Finals · ATP · одиночный разряд<\/div><div class="lg-tag meta">Финал · Center Court<\/div>/, 'в «Сейчас в эфире» — второй строкой под турниром');
+  assert.doesNotMatch(row(match({ round: '', court: null })), /lg-tag/);
+  const live = row(match({ started: true, liveTime: '1-й сет', home: side(10, 'Jannik Sinner', { sets: games(2) }), away: side(20, 'Carlos Alcaraz', { sets: games(3), serving: true }) }));
+  assert.equal(live.match(/class="serve"/g).length, 1);
+  assert.doesNotMatch(row(match()), /class="sets"|class="serve"/, 'у не начавшегося матча счёта нет');
+});
+
+test('rowHtml: пара — флаги обоих, ★ нет', () => {
+  const html = row(match({ doubles: true,
+    home: side(null, 'Errani / Paolini', { ids: [1, 2], players: [{ id: 1, name: 'Sara Errani', flag: 'https://a.espncdn.com/ita.png' }, { id: 2, name: 'Jasmine Paolini', flag: 'https://a.espncdn.com/ita.png' }] }) }));
+  assert.match(html, /<span class="flags"><img[^>]*ita\.png[^>]*><img[^>]*ita\.png[^>]*><\/span>\s*<span class="name">Errani \/ Paolini/);
+  assert.equal(html.match(/data-fav=/g).length, 1, '★ только у игрока одиночной стороны');
+});
+
+test('rowHtml: без спойлеров вместо счёта «?», победитель и подача не видны', () => {
+  const m = match({ started: true, finished: true,
+    home: side(10, 'Jannik Sinner', { sets: games(6, 6), winner: true }), away: side(20, 'Carlos Alcaraz', { sets: games(3, 4), serving: true }) });
   const open = rowHtml({ key: 'm:1', m, lg: {} }, view());
-  assert.match(open, /<span class="score">3<\/span>/);
   assert.match(open, /class="team win"/);
   const hidden = rowHtml({ key: 'm:1', m, lg: {} }, view({ hidden: () => true }));
-  assert.doesNotMatch(hidden, /class="score"|win/);
+  assert.doesNotMatch(hidden, /class="sets"|win|class="serve"/);
   assert.equal(hidden.match(/data-reveal="1"/g).length, 2);
 });
 
@@ -167,52 +208,22 @@ test('rowHtml: эфиры — зрители только у LIVE, повтор�
 });
 
 test('rowHtml: «Искать в VK» только у не сыгранного матча без эфиров', () => {
-  assert.match(row(match()), /class="stream find" href="https:\/\/vkvideo\.ru\/search\?q=%D0%A7/);
+  assert.match(row(match()), /class="stream find" href="https:\/\/vkvideo\.ru\/search\?q=Jannik%20Sinner%20Carlos%20Alcaraz"/);
   assert.doesNotMatch(row(match({ finished: true })), /Искать в VK|class="streams"/);
 });
 
-test('rowHtml: избранное и активный эфир, без кнопки «Подробнее»', () => {
+test('rowHtml: избранное и активный эфир', () => {
   const m = match({ streams: [stream(), stream({ url: 'https://vkvideo.ru/video-1_3' })] });
   const html = rowHtml({ key: 'm:1', m, lg: {} }, view({ favIds: new Set([20]), player: { rowKey: 'm:1', url: 'https://vkvideo.ru/video-1_3' } }));
   assert.match(html, /class="star on" data-fav="20"/);
   assert.match(html, /class="star" data-fav="10"/);
   assert.equal(html.match(/ active"/g).length, 1);
   assert.match(html, / active"\s+href="https:\/\/vkvideo\.ru\/video-1_3"/, 'подсвечен эфир с этой ссылкой, где бы он ни стоял');
-  assert.doesNotMatch(html, /Подробнее/);
-  assert.doesNotMatch(html, /fotmob\.com\/match/, 'ссылка на FotMob — в подробностях');
 });
 
 test('rowHtml экранирует названия из внешних источников', () => {
-  const html = row(match({ home: { id: 1, name: '<img src=x onerror=alert(1)>' }, streams: [stream({ channel: '<b>', title: '"x"' })] }));
-  assert.doesNotMatch(html, /<img src=x|<b>/);
-});
-
-// ---------- view: подробности ----------
-const lineups = { home: { starters: [{ number: 1, name: 'Санчес' }], subs: [{ number: 13, name: 'Йоргенсен' }], coach: 'Мареска', formation: '4-2-3-1' },
-  away: { starters: [{ number: 22, name: 'Райя' }], subs: [{ number: 1, name: 'Арризабалага' }] } };
-
-test('detailsHtml: без спойлеров события скрыты, пока не нажали «Показать»', () => {
-  const d = { data: { state: 'finished', events: [{ kind: 'goal', side: 'home', minute: 10, player: 'Палмер', score: [1, 0] }], lineups } };
-  assert.match(detailsHtml(match(), d, true), /События скрыты.*data-reveal="1"/);
-  assert.doesNotMatch(detailsHtml(match(), d, true), /Палмер/);
-  assert.match(detailsHtml(match(), d, false), /⚽.*1:0/s);
-});
-
-test('detailsHtml: загрузка, ошибка, матч не начался', () => {
-  assert.match(detailsHtml(match(), { data: null }, false), /Загрузка/);
-  assert.match(detailsHtml(match(), { error: 'HTTP 500' }, false), /Не удалось загрузить: HTTP 500/);
-  assert.match(detailsHtml(match(), { data: { state: 'upcoming', events: [] } }, false), /ещё не начался.*Составы появятся/s);
-});
-
-test('detailsHtml: ссылка на FotMob в углу напротив «События»', () => {
-  assert.match(detailsHtml(match(), { data: { state: 'finished', events: [], lineups: null } }, false),
-    /<div class="dhead"><h4>События<\/h4><a class="fm" href="https:\/\/www\.fotmob\.com\/match\/1"/);
-});
-
-test('detailsHtml: «Запасные» открыты у обеих команд сразу', () => {
-  const d = { data: { state: 'live', events: [], lineups } };
-  assert.equal(detailsHtml(match(), { ...d, subsOpen: true }, false).match(/<details open>/g).length, 2);
-  assert.equal(detailsHtml(match(), d, false).match(/<details open>/g), null);
+  const html = row(match({ home: side(1, '<img src=x onerror=alert(1)>', { players: [{ id: 1, name: 'x', flag: '"><script>' }] }), round: '<i>', streams: [stream({ channel: '<b>', title: '"x"' })] }));
+  assert.doesNotMatch(html, /<img src=x|<b>|<i>|<script>/);
 });
 
 // ---------- view: полосы и статус ----------
@@ -250,9 +261,4 @@ test('statusBadge: цвет точки по доле упавших канало
   assert.equal(statusBadge(vk([true, false])).cls, 'warn');
   assert.equal(statusBadge(vk([false, false])).cls, 'bad');
   assert.match(statusBadge(vk([true])).text, /^5 эфиров · /);
-});
-
-test('detailsToggleHtml: одна кнопка «События и составы» для плеера и для матча в окне', () => {
-  assert.match(detailsToggleHtml('live:7', true), /class="pmore on" data-details="live:7" aria-expanded="true">События и составы</);
-  assert.match(detailsToggleHtml('m:7', false), /class="pmore" data-details="m:7" aria-expanded="false"/);
 });

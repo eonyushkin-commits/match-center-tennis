@@ -19,37 +19,41 @@ test('у пользователя хранятся только отличия',
   const all = resolve({}).channels;
   const user = applyPatch({}, {
     channels: [
-      ...all.filter((c) => c.screenName !== 'pl_forever'), // встроенный убран
+      ...all.filter((c) => c.screenName !== 'bbtennis_live'), // встроенный убран
       { screenName: 'my_channel', label: 'Мой канал', enabled: true },
-    ].map((c) => (c.screenName === 'englishaccent' ? { ...c, enabled: false } : c)),
+    ].map((c) => (c.screenName === 'tennisprimesport' ? { ...c, enabled: false } : c)),
     leagues: defaults.leagues,
     refreshSeconds: defaults.refreshSeconds,
   });
   assert.deepEqual(user, {
     channels: [
-      { screenName: 'englishaccent', disabled: true },
+      { screenName: 'tennisprimesport', disabled: true },
       { screenName: 'my_channel', label: 'Мой канал' },
-      { screenName: 'pl_forever', disabled: true },
+      { screenName: 'bbtennis_live', disabled: true },
     ],
   });
   const s = resolve(user);
-  assert.deepEqual(s.channels.filter((c) => c.enabled).map((c) => c.screenName), ['sportcast.online', 'vishli_football', 'my_channel']);
+  assert.deepEqual(s.channels.filter((c) => c.enabled).map((c) => c.screenName), ['sportcast_tennis', 'tennis_bolshe', 'tennistimehere', 'my_channel']);
 });
 
 test('новый встроенный канал доходит до пользователя со старыми настройками', () => {
   const s = resolve({ channels: [{ screenName: 'my_channel', label: 'Мой' }] });
-  assert.ok(s.channels.some((c) => c.screenName === 'vishli_football' && c.enabled));
+  assert.ok(s.channels.some((c) => c.screenName === 'tennistimehere' && c.enabled));
 });
 
 test('алиасы пользователя добавляются к встроенным', () => {
-  const s = resolve({ teamAliases: { 'Манчестер Сити': ['Горожане'], 'Рексем': ['Wrexham'] } });
-  assert.deepEqual(s.teamAliases['Манчестер Сити'], ['Ман Сити', 'Горожане']);
-  assert.deepEqual(s.teamAliases['Рексем'], ['Wrexham']);
+  const s = resolve({ teamAliases: { 'Соболенко': ['Арина С.'], 'Samson': ['Самсон'] } });
+  assert.deepEqual(s.teamAliases['Соболенко'], ['Сабаленка', 'Арина С.']);
+  assert.deepEqual(s.teamAliases['Samson'], ['Самсон']);
 });
 
 test('неверные значения отклоняются с понятной ошибкой', () => {
   assert.throws(() => applyPatch({}, { channels: [{ screenName: 'bad name!' }] }), { status: 400, message: /Неверное имя канала/ });
   assert.throws(() => applyPatch({}, { leagues: [] }), { status: 400 });
+  assert.throws(() => applyPatch({}, { leagues: [47, 48] }), { status: 400, message: /хотя бы один разряд/ }, 'номера футбольных турниров разрядами не считаются');
+  assert.deepEqual(applyPatch({}, { leagues: [2, 4, 2, 99] }).leagues, [2, 4]);
+  assert.deepEqual(resolve({ leagues: [47, 48, 132] }).leagues, defaults.leagues, 'файл настроек от футбольного приложения');
+  assert.deepEqual(resolve({ leagues: [4, 47, 2] }).leagues, [4, 2]);
   assert.equal(applyPatch({}, { refreshSeconds: 5 }).refreshSeconds, 30);
 });
 
@@ -70,8 +74,8 @@ test('update сохраняет на диск и сообщает об изме�
   const settings = await openSettings(dir);
   let changed = null;
   settings.on('change', (next) => { changed = next; });
-  await settings.update({ favorites: [{ id: 10260, name: 'Манчестер Юнайтед' }], ui: { filters: { live: true } } });
-  assert.deepEqual(changed.favorites, [{ id: 10260, name: 'Манчестер Юнайтед' }]);
+  await settings.update({ favorites: [{ id: 10260, name: 'Carlos Alcaraz' }], ui: { filters: { live: true } } });
+  assert.deepEqual(changed.favorites, [{ id: 10260, name: 'Carlos Alcaraz' }]);
   const reopened = await openSettings(dir);
   assert.equal(reopened.get().ui.filters.live, true);
   assert.equal(reopened.get().favorites[0].id, 10260);
@@ -113,7 +117,7 @@ test('отмеченные матчи хранятся до суток посл�
   const soon = new Date(Date.now() + 3600e3).toISOString();
   const long = new Date(Date.now() - 3 * 24 * 3600e3).toISOString();
   const user = applyPatch({}, { favoriteMatches: [
-    { id: 1, name: 'Фулхэм — Манчестер Юнайтед', utcTime: soon },
+    { id: 1, name: 'Mirra Andreeva — Diana Shnaider', utcTime: soon },
     { id: 2, name: 'Давно прошедший', utcTime: long },
     { id: 'x', name: 'без номера' },
   ] });

@@ -44,7 +44,6 @@ export function embedUrl(s) {
   try {
     const u = new URL(s.embed);
     if (u.protocol !== 'https:' || !/(^|\.)(vkvideo\.ru|vk\.com|vk\.ru)$/.test(u.hostname)) return null;
-    u.searchParams.delete('__ref');
     return u.href;
   } catch {
     return null;
@@ -54,19 +53,19 @@ export function embedUrl(s) {
 // ссылка VK с началом воспроизведения: …&t=20m14s — так понимают и плеер, и сайт
 export const withTime = (url, sec) => (sec == null ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Math.floor(sec / 60)}m${sec % 60}s`);
 
-// «vkvideo.ru/@pl_forever», «https://vk.com/video/@x/lives», «@x» → screenName или null
+// «vkvideo.ru/@tennisprimesport», «https://vk.com/video/@x/lives», «@x» → screenName или null
 export function parseChannel(text) {
   const s = text.trim().replace(/^https?:\/\//i, '').replace(/^(www\.)?(vkvideo\.ru|vk\.com|vk\.ru)\//i, '')
     .replace(/^video\//i, '').replace(/^@/, '').split(/[/?#]/)[0];
   return /^[\w.-]{2,64}$/.test(s) ? s : null;
 }
 
-// «Команда = вариант, вариант» по строке → { aliases } или { error } с непонятой строкой
+// «Игрок = вариант, вариант» по строке → { aliases } или { error } с непонятой строкой
 export function parseAliases(text) {
   const aliases = {};
   for (const line of text.split('\n').map((l) => l.trim()).filter(Boolean)) {
     const [team, names] = line.split('=');
-    if (!team?.trim() || !names?.trim()) return { error: `Не понял строку «${line}»: нужно «Команда = вариант, вариант»` };
+    if (!team?.trim() || !names?.trim()) return { error: `Не понял строку «${line}»: нужно «Игрок = вариант, вариант»` };
     aliases[team.trim()] = names.split(',').map((n) => n.trim()).filter(Boolean);
   }
   return { aliases };
