@@ -99,12 +99,14 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
   const namesOf = createNamer(settings.teamAliases);
   const names = (s) => s.players.map((p) => namesOf({ name: p.ru?.name, last: p.ru?.last, enName: p.name, enLast: p.last }));
   const today = ymdIn(now, tz);
-  const seen = new Set(); // микст на «Шлемах» есть в табло обоих туров
+  const seen = new Set(); // один матч не должен повторяться в списке
 
   const leagues = [];
   for (const cat of settings.leagues) {
     const kind = CATEGORIES[cat];
     if (!kind) continue;
+    // На Шлемах оба табло ESPN содержат обе сетки; выбираем готовую метку разряда.
+    const wanted = `${kind.tour === 'atp' ? 'mens' : 'womens'}-${kind.doubles ? 'doubles' : 'singles'}`;
     for (const ev of data.events || []) {
       if (ev.tour !== kind.tour) continue;
       expect(ev.id != null && typeof ev.name === 'string' && (ev.groupings == null || Array.isArray(ev.groupings)),
@@ -113,7 +115,7 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
       for (const g of ev.groupings || []) {
         const slug = g?.grouping?.slug;
         expect(typeof slug === 'string' && Array.isArray(g.competitions), 'ESPN', `у турнира ${ev.id} разряд без названия или матчей`);
-        if (slug.includes('doubles') !== kind.doubles) continue;
+        if (slug !== wanted) continue;
         for (const c of g.competitions) {
           expect(okMatch(c), 'ESPN', `у матча ${c?.id ?? '?'} нет времени, статуса или участников`);
           if (c.competitors.length !== 2 || seen.has(c.id)) continue;
