@@ -1,7 +1,7 @@
 // Главный процесс: поднимает ядро матч-центра, показывает окно, живёт в трее, уведомляет о матчах
 // избранных игроков, открывает плеер в отдельных окнах и обновляется из GitHub Releases.
 const {
-  app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeTheme, net, screen, shell,
+  app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, nativeTheme, net, screen, shell,
 } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -12,6 +12,8 @@ const APP_ID = 'ru.sportcenter.tenniscenter';
 const NAME = 'Матч-центр Теннис';
 const TITLE = 'Матч-центр | Теннис';
 const PRELOAD = path.join(__dirname, 'preload.cjs');
+const ICON = path.join(__dirname, '..', 'assets', 'icon.ico');
+const ICON_PNG = path.join(__dirname, '..', 'assets', 'icon.png');
 const RELEASES = 'https://github.com/eonyushkin-commits/match-center-tennis/releases';
 const load = (file) => import(pathToFileURL(path.join(__dirname, '..', file)).href);
 
@@ -61,7 +63,7 @@ function openMatch(date, id) {
 
 function notify({ title, body, onClick }) {
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title, body });
+  const n = new Notification({ title, body, icon: ICON_PNG });
   notifications.add(n);
   n.on('close', () => notifications.delete(n));
   n.on('click', () => {
@@ -87,6 +89,7 @@ async function start() {
   const s = mc.settings.get();
   const toTray = startHidden && s.tray;
   win = new BrowserWindow({
+    icon: ICON,
     ...restoreBounds(s.ui.window),
     minWidth: 380,
     minHeight: 480,
@@ -114,6 +117,7 @@ async function start() {
       // VK отказывает iframe на локальной странице. Официальный плеер как
       // самостоятельная страница воспроизводит тот же эфир без подмены запросов.
       const player = new BrowserWindow({
+        icon: ICON,
         width: 800, height: 450, minWidth: 320, minHeight: 180, useContentSize: true,
         alwaysOnTop: true, backgroundColor: '#000', autoHideMenuBar: true,
         title: params.get('title') || 'Трансляция',
@@ -175,8 +179,7 @@ async function start() {
     notify({ title, body, onClick: () => openMatch(date, match.id) });
   });
 
-  // своей иконки у приложения нет: значок для трея — тот же, что у самой программы
-  trayImage = await app.getFileIcon(process.execPath, { size: 'small' }).catch(() => null);
+  trayImage = nativeImage.createFromPath(ICON_PNG).resize({ width: 16, height: 16 });
   mc.settings.on('change', applyAppSettings);
   applyAppSettings(mc.settings.get());
 
