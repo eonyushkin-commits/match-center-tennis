@@ -4,7 +4,7 @@
 //             начало ловим по самому матчу: пока он ждёт начала, проверяем раз в минуту.
 // Проверка назначается на ближайший из этих моментов, но не реже раза в idleMs: расписание
 // могут поменять.
-import { buildDay, localYmd, toursOf } from './day.mjs';
+import { buildDay, toursOf, ymdIn } from './day.mjs';
 
 const SOON = 15 * 60e3;
 const LATE = 10 * 60e3;
@@ -26,7 +26,7 @@ export function watchFavorites({ poller, settings, espn, onEvent, now = () => Da
     if (!s.notifications || (!s.favorites.length && !s.favoriteMatches.length)) return next;
     const t = now();
     // матч после полуночи лежит в расписании завтрашнего дня; смотрим вперёд до следующей проверки
-    const dates = new Set([localYmd(new Date(t)), localYmd(new Date(t + SOON + idleMs))]);
+    const dates = new Set([ymdIn(t, tz), ymdIn(t + SOON + idleMs, tz)]);
     const snapshot = poller.snapshot();
     for (const date of dates) {
       const day = buildDay({ data: await espn.day(date, toursOf(s.leagues)), date, tz, settings: s, snapshot, now: t });

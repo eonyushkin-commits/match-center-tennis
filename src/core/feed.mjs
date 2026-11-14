@@ -12,7 +12,7 @@ export function createFeed({ settings, poller, espn, version, dayMs = 60e3, retr
     // канал (status, day) → что отправили последним: то же самое повторно не шлём.
     // Успех и ошибка — два события одного канала, поэтому успех после сбоя уходит заново.
     const sent = {};
-    const timers = new Set();
+    let timer = null;
     let stopped = false;
 
     const push = (channel, event, data) => {
@@ -41,25 +41,23 @@ export function createFeed({ settings, poller, espn, version, dayMs = 60e3, retr
     };
 
     // сразу и дальше по часам; после сбоя — повтор через retryMs
-    async function every(ms, run) {
-      const ok = await run();
-      if (stopped) return;
-      const timer = setTimeout(() => {
-        timers.delete(timer);
-        every(ms, run);
-      }, ok ? ms : retryMs);
-      timers.add(timer);
+    async function loop() {
+      const ok = await day();
+      if (!stopped) timer = setTimeout(loop, ok ? dayMs : retryMs);
     }
-    every(dayMs, day);
-    // прочитаны каналы или сохранены настройки — расписание сразу, не дожидаясь круга
+    loop();
+    // прочитаны каналы или сохранены настройки — расписание сразу, не дожидаясь круга.
+    // Размер окна, тема и фильтры на расписание не влияют: ради них ESPN не спрашиваем.
+    const dayKey = (s) => JSON.stringify([s.leagues, s.favorites, s.favoriteMatches, s.teamAliases]);
+    const changed = (s, prev) => (s && prev && dayKey(s) === dayKey(prev) ? status() : day());
     poller.on('update', day);
-    settings.on('change', day);
+    settings.on('change', changed);
 
     const stop = () => {
       stopped = true;
-      for (const timer of timers) clearTimeout(timer);
+      clearTimeout(timer);
       poller.off('update', day);
-      settings.off('change', day);
+      settings.off('change', changed);
       stops.delete(stop);
     };
     stops.add(stop);

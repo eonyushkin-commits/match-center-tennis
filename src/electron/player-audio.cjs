@@ -2,6 +2,7 @@
 // поэтому тот же postMessage-протокол работает без локальной страницы с iframe.
 function audioInitScript(muted) {
   return `(() => new Promise((resolve) => {
+    const volume = 0.5;
     const muted = ${JSON.stringify(muted)};
     let configured = false;
     const send = (data) => window.postMessage(data, location.origin);
@@ -17,11 +18,11 @@ function audioInitScript(muted) {
       if (!configured && data?.event === 'inited') {
         configured = true;
         clearInterval(retry);
-        if (data.volume === 0.5 && data.muted === muted) return finish(true);
-        send({ method: 'set_volume', volume: 0.5 });
+        if (data.volume === volume && data.muted === muted) return finish(true);
+        send({ method: 'set_volume', volume });
         send({ method: muted ? 'mute' : 'unmute' });
       } else if (configured && data?.event === 'volumechange'
-        && data.volume === 0.5 && data.muted === muted) {
+        && data.volume === volume && data.muted === muted) {
         finish(true);
       }
     };

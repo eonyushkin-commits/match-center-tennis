@@ -170,7 +170,6 @@ async function start() {
     if (quitting || !mc.settings.get().tray) return;
     e.preventDefault();
     win.hide();
-    win.webContents.send('to-tray'); // страница закроет плеер
     if (!mc.settings.get().ui.trayHintShown) {
       notify({ title: `${NAME} работает в трее`, body: 'Уведомления о матчах избранных игроков продолжат приходить. Выйти — правой кнопкой по значку в трее.', onClick: showWindow });
       mc.settings.update({ ui: { trayHintShown: true } }).catch(() => {});

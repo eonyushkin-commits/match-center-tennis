@@ -168,21 +168,20 @@ app.whenReady().then(async () => {
   await step('клик по уведомлению: скрытое окно показывается и открывает идущий матч в плеере', async () => {
     win.hide();
     await sleep(300);
-    const { localYmd } = await import('../../src/core/day.mjs');
+    const { ymdIn } = await import('../../src/core/day.mjs');
     win.showInactive(); // как openMatch в main.cjs: показать окно и попросить страницу раскрыть матч
-    win.webContents.send('open-match', { date: localYmd(new Date()), id: 101 });
+    win.webContents.send('open-match', { date: ymdIn(Date.now(), Intl.DateTimeFormat().resolvedOptions().timeZone), id: 101 });
     await until('окно из уведомления', () => players().length === 2);
     assert.equal(win.isVisible(), true);
   });
 
-  await step('крестик прячет окно в трей: приложение работает, плеер и лента закрыты, лента открывается при показе', async () => {
+  await step('крестик прячет окно в трей: приложение работает, лента закрыта и открывается при показе', async () => {
     for (const w of players()) w.destroy();
     assert.equal(await frame(), null);
     win.close();
     await sleep(500);
     assert.equal(win.isDestroyed(), false);
     assert.equal(win.isVisible(), false);
-    assert.equal(await page(`!!document.querySelector('.player iframe')`), false, 'плеер закрыт');
     const before = subscriptions;
     win.showInactive();
     await until('новая подписка при показе', () => subscriptions === before + 1);

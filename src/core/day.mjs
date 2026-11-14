@@ -7,12 +7,13 @@ import { expect, isObject } from './shape.mjs';
 
 const PLAYERS = JSON.parse(await readFile(new URL('./players.json', import.meta.url), 'utf8')); // id ESPN → [имя, фамилия]
 
-// Разряды — «турниры» настроек: номер → тур и вид
+// Разряды — «турниры» настроек: номер → тур, вид, метка разряда в ESPN и подпись
+// (подписи те же, что в knownLeagues из defaults.json)
 export const CATEGORIES = {
-  1: { tour: 'atp', doubles: false },
-  2: { tour: 'wta', doubles: false },
-  3: { tour: 'atp', doubles: true },
-  4: { tour: 'wta', doubles: true },
+  1: { tour: 'atp', doubles: false, slug: 'mens-singles', label: 'Мужчины · одиночный разряд' },
+  2: { tour: 'wta', doubles: false, slug: 'womens-singles', label: 'Женщины · одиночный разряд' },
+  3: { tour: 'atp', doubles: true, slug: 'mens-doubles', label: 'Мужчины · парный разряд' },
+  4: { tour: 'wta', doubles: true, slug: 'womens-doubles', label: 'Женщины · парный разряд' },
 };
 // туры, которые нужны для выбранных разрядов
 export const toursOf = (leagues) => [...new Set(leagues.map((id) => CATEGORIES[id]?.tour).filter(Boolean))];
@@ -106,7 +107,7 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
     const kind = CATEGORIES[cat];
     if (!kind) continue;
     // На Шлемах оба табло ESPN содержат обе сетки; выбираем готовую метку разряда.
-    const wanted = `${kind.tour === 'atp' ? 'mens' : 'womens'}-${kind.doubles ? 'doubles' : 'singles'}`;
+    const wanted = kind.slug;
     for (const ev of data.events || []) {
       if (ev.tour !== kind.tour) continue;
       expect(ev.id != null && typeof ev.name === 'string' && (ev.groupings == null || Array.isArray(ev.groupings)),
@@ -149,7 +150,7 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
       leagues.push({
         id: `${cat}:${ev.id}`,
         name: ev.name,
-        country: `${kind.tour === 'atp' ? 'Мужчины' : 'Женщины'} · ${kind.doubles ? 'парный разряд' : 'одиночный разряд'}`,
+        country: kind.label,
         matches,
       });
     }
@@ -157,9 +158,4 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
 
   // stale — { message, format }: показано полученное ранее
   return { leagues, stale: data.stale || null };
-}
-
-// Дата «сегодня» в часовом поясе компьютера (ГГГГММДД)
-export function localYmd(d = new Date()) {
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
