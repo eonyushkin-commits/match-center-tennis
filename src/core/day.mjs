@@ -173,6 +173,6 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
     }
   }
 
-  // stale — { message, format }: показано полученное ранее
-  return { leagues, stale: data.stale || null };
+  // stale — { message, format }: показано полученное ранее; fetchedAt — когда ESPN ответил
+  return { leagues, stale: data.stale || null, fetchedAt: data.fetchedAt ?? null };
 }

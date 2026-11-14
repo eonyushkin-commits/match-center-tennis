@@ -26,6 +26,11 @@ export const inDateRange = (today, date) => Math.abs(daysBetween(today, date)) <
 
 const clock = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' });
 export const hhmm = (t) => clock.format(new Date(t));
+// «14:05», а для другого дня — «13.11 14:05»: старые данные не должны выглядеть сегодняшними
+export const stamp = (t, now = Date.now()) => {
+  const d = new Date(t);
+  return ymd(d) === ymd(new Date(now)) ? hhmm(t) : `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${hhmm(t)}`;
+};
 export const matchTitle = (m) => `${m.home.name} — ${m.away.name}`;
 export const isLive = (m) => m.started && !m.finished && !m.cancelled;
 export const STATUS = { started: 'LIVE', upcoming: 'скоро', finished: 'запись', failed: 'сбой' };
