@@ -1,7 +1,7 @@
 // Логика и разметка страницы — без браузера: src/web/*.mjs не трогают DOM.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { keepSection, markFavorites, scoresHidden, sections } from '../src/web/filter.mjs';
+import { markFavorites, scoresHidden, sections } from '../src/web/filter.mjs';
 import { addDays, audience, embedUrl, esc, parseAliases, parseChannel, dateStrip, inDateRange } from '../src/web/format.mjs';
 import { notices, rowHtml, sectionHeadHtml, statusBadge, updateHtml } from '../src/web/view.mjs';
 
@@ -14,7 +14,7 @@ const match = (o = {}) => ({
   started: false, finished: false, cancelled: false,
   home: side(10, 'Jannik Sinner'), away: side(20, 'Carlos Alcaraz'), streams: [], ...o,
 });
-const view = (o = {}) => ({ favIds: new Set(), hidden: () => false, player: null, ...o });
+const view = (o = {}) => ({ favIds: new Set(), hidden: () => false, ...o });
 const row = (m) => rowHtml({ key: `m:${m.id}`, m, lg: { name: 'ATP Finals', country: 'Мужчины · одиночный разряд' } }, view());
 
 // ---------- format ----------
@@ -100,7 +100,7 @@ function day() {
 }
 const NO = { streams: false, live: false, favorites: false };
 const keys = (secs) => secs.map((s) => `${s.key}=${s.rows.map((r) => r.m.id).join(',')}`);
-const pick = (o) => keys(sections({ day: day(), isToday: true, filters: NO, q: '', pinned: new Set(), ...o }));
+const pick = (o) => keys(sections({ day: day(), isToday: true, filters: NO, q: '', ...o }));
 
 test('sections: «Сейчас в эфире» — сегодня, только матчи с идущим эфиром', () => {
   assert.deepEqual(pick({}), ['live=1', 'lg:47=1,2,3', 'lg:132=4']);
@@ -116,13 +116,9 @@ test('sections: фильтры и поиск, пустой турнир проп
   assert.deepEqual(pick({ q: 'wta' }), ['lg:132=4']);
   const d = day();
   d.leagues[1].level = 'WTA Finals';
-  assert.deepEqual(keys(sections({ day: d, isToday: false, filters: NO, q: 'finals', pinned: new Set() })).length, 2);
+  assert.deepEqual(keys(sections({ day: d, isToday: false, filters: NO, q: 'finals' })).length, 2);
   d.leagues[0].level = 'ATP 500';
-  assert.deepEqual(keys(sections({ day: d, isToday: false, filters: NO, q: '500', pinned: new Set() })), ['lg:47=1,2,3'], 'поиск по уровню турнира');
-});
-
-test('sections: строка с открытым плеером не прячется фильтром', () => {
-  assert.deepEqual(pick({ filters: { ...NO, favorites: true }, pinned: new Set(['m:4', 'live:1']) }), ['live=1', 'lg:47=3', 'lg:132=4']);
+  assert.deepEqual(keys(sections({ day: d, isToday: false, filters: NO, q: '500' })), ['lg:47=1,2,3'], 'поиск по уровню турнира');
 });
 
 test('sections: по времени начала — матчи по времени, одновременные стоят блоком своего турнира', () => {
@@ -132,7 +128,7 @@ test('sections: по времени начала — матчи по време�
     { id: 48, name: 'Stockholm Open', country: 'ATP', matches: [at(3, '12:00'), at(4, '17:00'), at(7, '14:00')] },
     { id: 132, name: 'WTA Finals', country: 'WTA', matches: [at(5, '14:30')] },
   ] };
-  const of = (o) => keys(sections({ day: d, isToday: false, filters: NO, q: '', pinned: new Set(), ...o }));
+  const of = (o) => keys(sections({ day: d, isToday: false, filters: NO, q: '', ...o }));
   assert.deepEqual(of({}), ['lg:47=1,2,6', 'lg:48=3,4,7', 'lg:132=5']);
   assert.deepEqual(of({ byTime: true }),
     ['lg:48:3=3', 'lg:47:1=1,2', 'lg:48:7=7', 'lg:132:5=5', 'lg:47:6=6', 'lg:48:4=4'],
@@ -140,16 +136,6 @@ test('sections: по времени начала — матчи по време�
   assert.deepEqual(of({ byTime: true, filters: { ...NO, favorites: true } }), ['lg:47:1=1,6'], 'соседние блоки одного турнира — один раздел');
   d.leagues[2].matches.unshift(at(8, '00:00', { timeKnown: false }));
   assert.deepEqual(of({ byTime: true }).slice(-2), ['lg:48:4=4', 'lg:132:8=8'], 'матч без назначенного времени — в конце списка');
-});
-
-test('keepSection: раздел со строкой плеера сохраняет ключ своего узла', () => {
-  const secs = () => [{ key: 'lg:47:1', rows: [{ key: 'm:1' }] }, { key: 'lg:132:5', rows: [{ key: 'm:5' }] }, { key: 'lg:47:6', rows: [{ key: 'm:6' }] }];
-  const ids = (list) => list.map((s) => `${s.key}=${s.rows[0].key}`);
-  // блок распался: плеер у матча 6 стоит в узле lg:47:1 — узел остаётся его, первому блоку достаётся новый ключ
-  assert.deepEqual(ids(keepSection(secs(), 'm:6', 'lg:47:1')), ['lg:47:6=m:1', 'lg:132:5=m:5', 'lg:47:1=m:6']);
-  assert.deepEqual(ids(keepSection(secs(), 'm:6', 'lg:47')), ['lg:47:1=m:1', 'lg:132:5=m:5', 'lg:47=m:6'], 'сменился порядок — ключ прежнего раздела');
-  assert.deepEqual(ids(keepSection(secs(), 'm:6', undefined)), ids(secs()), 'плеера на странице ещё нет');
-  assert.deepEqual(ids(keepSection(secs(), 'm:9', 'lg:47:1')), ids(secs()), 'строки плеера нет в списке');
 });
 
 // ---------- view: строка матча ----------
@@ -224,13 +210,12 @@ test('rowHtml: «Искать в VK» только у не сыгранного 
   assert.doesNotMatch(row(match({ finished: true })), /Искать в VK|class="streams"/);
 });
 
-test('rowHtml: избранное и активный эфир', () => {
+test('rowHtml: избранные игроки', () => {
   const m = match({ streams: [stream(), stream({ url: 'https://vkvideo.ru/video-1_3' })] });
-  const html = rowHtml({ key: 'm:1', m, lg: {} }, view({ favIds: new Set([20]), player: { rowKey: 'm:1', url: 'https://vkvideo.ru/video-1_3' } }));
+  const html = rowHtml({ key: 'm:1', m, lg: {} }, view({ favIds: new Set([20]) }));
   assert.match(html, /class="star on" data-fav="20"/);
   assert.match(html, /class="star" data-fav="10"/);
-  assert.equal(html.match(/ active"/g).length, 1);
-  assert.match(html, / active"\s+href="https:\/\/vkvideo\.ru\/video-1_3"/, 'подсвечен эфир с этой ссылкой, где бы он ни стоял');
+
 });
 
 test('rowHtml экранирует названия из внешних источников', () => {

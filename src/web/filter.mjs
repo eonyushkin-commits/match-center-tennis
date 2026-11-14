@@ -15,40 +15,27 @@ export function markFavorites(day, settings) {
     }
 }
 
-// Раздел со строкой rowKey получает ключ hostKey — ключ раздела, в котором эта строка уже стоит
-// на странице. Так раздел с плеером не создаётся заново, как бы ни перестроились блоки (перенос
-// iframe перезапускает видео). Раздел, уже занявший этот ключ, берёт взамен ключ первого.
-export function keepSection(secs, rowKey, hostKey) {
-  const mine = hostKey && secs.find((s) => s.rows.some((r) => r.key === rowKey));
-  if (!mine || mine.key === hostKey) return secs;
-  const other = secs.find((s) => s.key === hostKey);
-  if (other) other.key = mine.key;
-  mine.key = hostKey;
-  return secs;
-}
-
 // Разделы списка: «Сейчас в эфире» (только сегодня) и турниры.
-// pinned — ключи строк с открытым плеером: их не прячет никакой фильтр.
 // Поиск — по турниру и по игрокам: фамилия в паре, полное имя, русское написание из словаря.
 // byTime — матчи идут по времени начала, а не турнир за турниром в порядке из настроек.
-export function sections({ day, isToday, filters: f, q, pinned, byTime }) {
+export function sections({ day, isToday, filters: f, q, byTime }) {
   q = q.trim().toLowerCase();
   const who = (m) => [m.home, m.away].flatMap((t) => [t.name, ...t.players.flatMap((p) => [p.name, p.ru?.name])]).filter(Boolean).join(' ').toLowerCase();
   const hit = (m, lg) => (!f.streams || m.streams.length) && (!f.live || isLive(m)) && (!f.favorites || m.favorite)
     && (!q || `${lg.name} ${lg.level || ''} ${lg.country}`.toLowerCase().includes(q) || who(m).includes(q));
   const out = [];
 
-  // без блока (не сегодня или фильтр «Идут сейчас») остаются только закреплённые строки
+  // Блок эфиров показывается сегодня, если не включён фильтр «Идут сейчас».
   const liveBlock = isToday && !f.live;
   const live = [];
   for (const lg of day.leagues) for (const m of lg.matches) {
     const key = `live:${m.id}`;
-    if (pinned.has(key) || (liveBlock && isLive(m) && m.streams.some((s) => s.status === 'started') && hit(m, lg))) live.push({ key, m, lg, showLeague: true });
+    if (liveBlock && isLive(m) && m.streams.some((s) => s.status === 'started') && hit(m, lg)) live.push({ key, m, lg, showLeague: true });
   }
   if (live.length) out.push({ key: 'live', live: true, rows: live });
   const leagues = [];
   for (const lg of day.leagues) {
-    const rows = lg.matches.filter((m) => pinned.has(`m:${m.id}`) || hit(m, lg)).map((m) => ({ key: `m:${m.id}`, m, lg }));
+    const rows = lg.matches.filter((m) => hit(m, lg)).map((m) => ({ key: `m:${m.id}`, m, lg }));
     if (rows.length) leagues.push({ key: `lg:${lg.id}`, lg, rows });
   }
   if (!byTime) return [...out, ...leagues];

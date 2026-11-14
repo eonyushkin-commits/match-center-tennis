@@ -1,4 +1,4 @@
-// reconcile — главное условие плеера: пока строка на месте, её узел (и iframe в нём) не пересоздаётся.
+// Обновление DOM списка матчей по ключам.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseHTML } from 'linkedom';
@@ -21,43 +21,14 @@ test('reconcile: те же ключи — те же узлы, меняется �
   assert.equal(a.className, 'match fav');
 });
 
-test('reconcile: плеер между строками переживает обновление и перестановку соседей', () => {
-  const { document, list } = setup();
-  const player = document.createElement('div');
-  player.innerHTML = '<iframe src="https://vkvideo.ru/video_ext.php"></iframe>';
-  const iframe = player.firstElementChild;
-  reconcile(list, [{ key: 'm:1', html: '1' }, { key: 'player', node: player }, { key: 'm:2', html: '2' }]);
-  reconcile(list, [{ key: 'm:0', html: '0' }, { key: 'm:1', html: '1*' }, { key: 'player', node: player }, { key: 'm:3', html: '3' }]);
-  assert.deepEqual(keys(list), ['m:0', 'm:1', 'player', 'm:3']);
-  assert.equal(list.children[2], player);
-  assert.equal(player.firstElementChild, iframe);
-});
-
-test('reconcile: при смене порядка узел с плеером стоит, переставляются соседи', () => {
-  const { document, list } = setup();
-  const player = document.createElement('div');
-  const item = { key: 'player', node: player, fixed: true };
-  reconcile(list, [{ key: 'm:2' }, { key: 'm:1' }, item, { key: 'm:3' }]);
-  const moved = [];
-  for (const how of ['insertBefore', 'appendChild']) {
-    const real = list[how].bind(list);
-    list[how] = (n, ...rest) => { moved.push(n.dataset.key); return real(n, ...rest); };
-  }
-  reconcile(list, [{ key: 'm:1' }, item, { key: 'm:2' }, { key: 'm:3' }]);
-  assert.deepEqual(keys(list), ['m:1', 'player', 'm:2', 'm:3']);
-  reconcile(list, [{ key: 'm:3' }, { key: 'm:2' }, { key: 'm:1' }, item]);
-  assert.deepEqual(keys(list), ['m:3', 'm:2', 'm:1', 'player']);
-  assert.ok(!moved.includes('player'), `плеер не двигали: ${moved.join(', ')}`);
-});
-
-test('reconcile: лишние узлы удаляются, закрывающийся плеер доигрывает анимацию', () => {
-  const { document, list } = setup();
-  reconcile(list, [{ key: 'm:1', html: '1' }, { key: 'm:2', html: '2' }]);
-  const closing = document.createElement('div');
-  closing.dataset.key = 'closing';
-  list.insertBefore(closing, list.children[1]);
-  reconcile(list, [{ key: 'm:1', html: '1' }]);
-  assert.deepEqual(keys(list), ['m:1', 'closing']);
+test('reconcile: меняет порядок и удаляет лишние узлы', () => {
+  const { list } = setup();
+  reconcile(list, [{ key: 'a' }, { key: 'b' }, { key: 'c' }]);
+  const [a, b] = list.children;
+  reconcile(list, [{ key: 'b' }, { key: 'a' }]);
+  assert.deepEqual(keys(list), ['b', 'a']);
+  assert.equal(list.children[0], b);
+  assert.equal(list.children[1], a);
 });
 
 test('reconcile: новые узлы — div или то, что вернёт create', () => {

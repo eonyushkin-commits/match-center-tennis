@@ -106,41 +106,41 @@ async function start() {
     // Тема, фильтры и избранное хранятся в настройках приложения, а не в браузере.
     webPreferences: { partition: 'matchcenter', spellcheck: false, preload: PRELOAD },
   });
+  win.webContents.session.setSpellCheckerEnabled(false);
   if (s.ui.window?.maximized) win.maximize();
   win.on('page-title-updated', (e) => e.preventDefault()); // заголовок с версией, а не <title> страницы
   if (!toTray) win.once('ready-to-show', () => win.show());
 
-  // Запрос страницы плеера преобразуем в прямое открытие официального плеера VK.
+  // Открытие официального плеера разрешено только главной странице приложения.
+  ipcMain.handle('player:open', (event, { src, title } = {}) => {
+    if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return;
+    let source;
+    try { source = new URL(src); } catch { return; }
+    if (source.protocol !== 'https:' || !/^(vkvideo\.ru|vk\.com|vk\.ru)$/.test(source.hostname) || source.pathname !== '/video_ext.php') return;
+    const muted = playerWindows.size > 0;
+    source.searchParams.set('js_api', '1');
+    source.searchParams.set('mute', muted ? '1' : '0');
+    // VK отказывает iframe на локальной странице. Официальный плеер как
+    // самостоятельная страница воспроизводит тот же эфир без подмены запросов.
+    const player = new BrowserWindow({
+      icon: ICON,
+      width: 800, height: 450, minWidth: 320, minHeight: 180, useContentSize: true,
+      alwaysOnTop: true, backgroundColor: '#000', autoHideMenuBar: true,
+      title: typeof title === 'string' ? title : 'Трансляция',
+      // preload лишь задаёт высокое качество по умолчанию и ничего не открывает странице VK
+      webPreferences: { partition: 'matchcenter', spellcheck: false, nodeIntegration: false, contextIsolation: true, sandbox: true, preload: PLAYER_PRELOAD },
+    });
+    playerWindows.add(player);
+    player.once('closed', () => playerWindows.delete(player));
+    configurePlayerAudio(player.webContents, { muted, url: source.href });
+    keepContentRatio(player, 16 / 9);
+    player.webContents.setWindowOpenHandler(({ url: target }) => { openExternal(target); return { action: 'deny' }; });
+    player.webContents.on('will-navigate', (e, target) => {
+      if (target !== source.href) { e.preventDefault(); openExternal(target); }
+    });
+    player.loadURL(source.href).catch((e) => console.error('VK player:', e.message));
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (new URL(url).origin === mc.url && new URL(url).pathname === '/player.html') {
-      const params = new URL(url).searchParams;
-      let source;
-      try { source = new URL(params.get('src')); } catch { return { action: 'deny' }; }
-      if (source.protocol !== 'https:' || !/^(vkvideo\.ru|vk\.com|vk\.ru)$/.test(source.hostname) || source.pathname !== '/video_ext.php') return { action: 'deny' };
-      const muted = playerWindows.size > 0;
-      source.searchParams.set('js_api', '1');
-      source.searchParams.set('mute', muted ? '1' : '0');
-      // VK отказывает iframe на локальной странице. Официальный плеер как
-      // самостоятельная страница воспроизводит тот же эфир без подмены запросов.
-      const player = new BrowserWindow({
-        icon: ICON,
-        width: 800, height: 450, minWidth: 320, minHeight: 180, useContentSize: true,
-        alwaysOnTop: true, backgroundColor: '#000', autoHideMenuBar: true,
-        title: params.get('title') || 'Трансляция',
-        // preload лишь задаёт высокое качество по умолчанию и ничего не открывает странице VK
-        webPreferences: { partition: 'matchcenter', nodeIntegration: false, contextIsolation: true, sandbox: true, preload: PLAYER_PRELOAD },
-      });
-      playerWindows.add(player);
-      player.once('closed', () => playerWindows.delete(player));
-      configurePlayerAudio(player.webContents, { muted, url: source.href });
-      keepContentRatio(player, 16 / 9);
-      player.webContents.setWindowOpenHandler(({ url: target }) => { openExternal(target); return { action: 'deny' }; });
-      player.webContents.on('will-navigate', (e, target) => {
-        if (target !== source.href) { e.preventDefault(); openExternal(target); }
-      });
-      player.loadURL(source.href).catch((e) => console.error('VK player:', e.message));
-      return { action: 'deny' };
-    }
     openExternal(url);
     return { action: 'deny' };
   });
