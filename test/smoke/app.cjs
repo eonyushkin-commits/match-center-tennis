@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { create: fakeNet } = require('./fake-net.cjs');
+const playerHtml = require('./vk-player.cjs');
+const networkFetch = net.fetch.bind(net);
 
 const OUT = app.commandLine.getSwitchValue('smoke-out');
 const results = [];
@@ -40,6 +42,13 @@ async function step(name, fn) {
 
 app.on('quit', () => save({ quit: true }));
 app.whenReady().then(async () => {
+  session.fromPartition('matchcenter').protocol.handle('https', (request) => {
+    const url = new URL(request.url);
+    if (url.hostname === 'vkvideo.ru' && url.pathname === '/video_ext.php') {
+      return new Response(playerHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    return networkFetch(request, { bypassCustomProtocolHandlers: true });
+  });
   // сколько раз страница подписывалась на ленту
   let subscriptions = 0;
   session.fromPartition('matchcenter').webRequest.onBeforeRequest((d, cb) => {
@@ -52,6 +61,8 @@ app.whenReady().then(async () => {
   const on = (code, what, ms) => until(what || code, () => page(code), ms);
   const click = (selector) => page(`document.querySelector(${JSON.stringify(selector)}).click(), true`);
   const players = () => BrowserWindow.getAllWindows().filter((w) => w !== win);
+  const audioReady = (w, muted) => until('начальная громкость плеера', async () =>
+    !w.webContents.isAudioMuted() && await js(w, `window.playerState?.volume === 0.5 && window.playerState?.muted === ${muted}`));
   const frame = (w = win) => js(w, `document.querySelector('iframe')?.src ?? null`);
 
   await step('запуск в трей: окно скрыто, страница не подписана на ленту', async () => {
@@ -94,15 +105,44 @@ app.whenReady().then(async () => {
     assert.equal(prefs.nodeIntegration, false);
     assert.equal(prefs.contextIsolation, true);
     assert.equal(prefs.sandbox, true);
-    assert.ok(!prefs.preload);
+    assert.equal(await js(child, `localStorage.getItem('vk_player_preferred_default_quality_settings')`), '{"type":"high_quality"}');
+    assert.equal(await js(child, 'window.qualityAtStart'), '{"type":"high_quality"}', 'настройка записана до скриптов плеера');
+    assert.equal(await js(child, 'typeof require + typeof process'), 'undefinedundefined');
+    assert.equal(new URL(child.webContents.getURL()).searchParams.get('mute'), '0');
+    assert.equal(new URL(child.webContents.getURL()).searchParams.get('js_api'), '1');
+    await audioReady(child, false);
+    // Инициализация не должна сбрасывать последующие ручные изменения.
+    await js(child, `window.postMessage({method:'set_volume',volume:0.2},location.origin), true`);
+    await sleep(350);
+    assert.equal(await js(child, 'window.playerState.volume'), 0.2);
     assert.equal(await frame(), null);
   });
   await step('запись открывается вторым самостоятельным плеером', async () => {
     await click('[data-key="m:102"] .stream[data-play]');
     await until('два окна', () => players().length === 2 && players().some(w => /id=2&/.test(w.webContents.getURL())));
+    const second = players().find(w => /id=2&/.test(w.webContents.getURL()));
+    await audioReady(second, true);
+    assert.equal(new URL(second.webContents.getURL()).searchParams.get('mute'), '1');
+    await click('[data-key="m:102"] .stream[data-play]');
+    await until('три окна', () => players().length === 3 && players().filter(w => /id=2&/.test(w.webContents.getURL())).length === 2);
+    const third = players().find(w => w !== second && /id=2&/.test(w.webContents.getURL()));
+    await audioReady(third, true);
+    await js(second, `window.postMessage({method:'unmute'},location.origin), true`);
+    await sleep(350);
+    assert.equal(await js(second, 'window.playerState.muted'), false, 'звук можно включить в VK');
+    assert.equal(await js(third, 'window.playerState.muted'), true, 'третье окно остаётся без звука');
+    assert.equal(await js(players().find(w => w !== second && w !== third), 'window.playerState.volume'), 0.2);
     for (const w of players()) if (/id=2&/.test(w.webContents.getURL())) w.close();
     await until('осталось окно эфира', () => players().length === 1);
     assert.equal(await frame(), null);
+  });
+
+  await step('после закрытия всех плееров новое окно снова со звуком 50%', async () => {
+    for (const w of players()) w.close();
+    await until('все плееры закрыты', () => players().length === 0);
+    await click('[data-key="live:101"] .stream[data-play]');
+    await until('новое первое окно', () => players().length === 1);
+    await audioReady(players()[0], false);
   });
 
   await step('окна не уходят на чужой сайт: такая ссылка открывается в браузере', async () => {
@@ -119,7 +159,7 @@ app.whenReady().then(async () => {
     await click('#open-settings');
     assert.equal(await page(`document.querySelector('#settings').open`), true);
     const labels = await page(`[...document.querySelectorAll('#settings input[name="league"]')].map((i) => i.closest('label').textContent.trim())`);
-    assert.deepEqual(labels, ['ATP · одиночный разряд', 'WTA · одиночный разряд', 'ATP · парный разряд', 'WTA · парный разряд']);
+    assert.deepEqual(labels, ['Мужчины · одиночный разряд', 'Женщины · одиночный разряд', 'Мужчины · парный разряд', 'Женщины · парный разряд']);
     assert.deepEqual(await page(`[...document.querySelectorAll('#settings input[name="league"]')].map((i) => i.checked)`), [true, true, false, false], 'пары по умолчанию выключены');
     assert.equal(await page(`document.querySelectorAll('#settings #chan-list li').length`), 5);
     await page(`document.querySelector('#settings').close(), true`);

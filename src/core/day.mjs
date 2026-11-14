@@ -149,7 +149,7 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
       leagues.push({
         id: `${cat}:${ev.id}`,
         name: ev.name,
-        country: `${kind.tour.toUpperCase()} · ${kind.doubles ? 'парный разряд' : 'одиночный разряд'}`,
+        country: `${kind.tour === 'atp' ? 'Мужчины' : 'Женщины'} · ${kind.doubles ? 'парный разряд' : 'одиночный разряд'}`,
         matches,
       });
     }

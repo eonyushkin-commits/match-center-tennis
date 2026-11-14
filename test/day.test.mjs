@@ -40,9 +40,9 @@ test('разделы: турнир × разряд, в порядке разря
     ],
   });
   assert.deepEqual(build(data).leagues.map((l) => [l.id, l.name, l.country, l.matches.map((m) => m.id)]), [
-    ['1:148-2026', 'Stockholm Open', 'ATP · одиночный разряд', [1]],
-    ['2:382-2026', 'WTA Finals', 'WTA · одиночный разряд', [2]],
-    ['4:382-2026', 'WTA Finals', 'WTA · парный разряд', [3]],
+    ['1:148-2026', 'Stockholm Open', 'Мужчины · одиночный разряд', [1]],
+    ['2:382-2026', 'WTA Finals', 'Женщины · одиночный разряд', [2]],
+    ['4:382-2026', 'WTA Finals', 'Женщины · парный разряд', [3]],
   ]);
   assert.deepEqual(build(data, { settings: resolve({ leagues: [4, 1] }) }).leagues.map((l) => l.id), ['4:382-2026', '1:148-2026']);
   assert.deepEqual(build(data, { settings: resolve({}) }).leagues.map((l) => l.id), ['1:148-2026', '2:382-2026'], 'по умолчанию пар нет');

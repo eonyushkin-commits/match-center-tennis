@@ -52,7 +52,7 @@ test('/api/events: расписание — турнир и разряд, счё
   assert.equal(status.version, 'test');
   assert.equal(status.vk.streamCount, 1);
   assert.equal(j.leagues.length, 1);
-  assert.deepEqual([j.leagues[0].name, j.leagues[0].country], ['WTA Finals', 'WTA · одиночный разряд']);
+  assert.deepEqual([j.leagues[0].name, j.leagues[0].country], ['WTA Finals', 'Женщины · одиночный разряд']);
   const m = j.leagues[0].matches[0];
   assert.deepEqual([m.home.name, m.liveTime, m.round, m.home.score], ['Mirra Andreeva', '2-й сет', 'Полуфинал', 1]);
   assert.deepEqual(m.streams.map((s) => s.url), ['u']);

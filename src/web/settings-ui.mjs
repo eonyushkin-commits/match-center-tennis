@@ -18,7 +18,7 @@ export function openSettingsDialog(dlg, { settings: s, save }) {
         <p class="hint" id="chan-hint">Встроенные каналы можно выключить, добавленные — удалить.</p></section>
       <section><h3>Разряды</h3><div class="checks" id="leagues">${leagues.map((l) => `<label class="check">
           <input type="checkbox" name="league" value="${l.id}" ${s.leagues.includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
-        <p class="hint">Показываются все турниры ATP и WTA, которые идут в выбранный день.</p></section>
+        <p class="hint">Показываются все доступные турниры выбранных разрядов, включая Большой шлем.</p></section>
       <section><h3>Обновление и уведомления</h3>
         <label class="row">Перечитывать каналы VK каждые <select class="field" id="refresh">${refreshOptions.map((v) =>
           `<option value="${v}" ${v === s.refreshSeconds ? 'selected' : ''}>${v < 60 ? `${v} с` : `${+(v / 60).toFixed(1)} мин`}</option>`).join('')}</select></label>
