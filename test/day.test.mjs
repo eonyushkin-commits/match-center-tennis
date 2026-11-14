@@ -1,7 +1,7 @@
 // Расписание дня из табло ESPN: разряды, день в часовом поясе, счёт по сетам, эфиры.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildDay, toursOf, ymdIn } from '../src/core/day.mjs';
+import { buildDay, levelOf, toursOf, ymdIn } from '../src/core/day.mjs';
 import { parsePair } from '../src/core/match.mjs';
 import { resolve } from '../src/core/settings.mjs';
 import {
@@ -152,4 +152,30 @@ test('ответ неожиданной формы — ошибка формат
   assert.throws(bad({ id: '1', name: 'X', groupings: [{ competitions: [] }] }), /ESPN изменил формат ответа \(у турнира 1 разряд без названия или матчей\)/);
   assert.throws(bad(event('1', 'X', { 'womens-singles': [{ id: '7', competitors: [] }] })), /у матча 7 нет времени, статуса или участников/);
   assert.equal(build(board({ wta: [], atp: [] })).leagues.length, 0);
+});
+
+test('уровень турнира: по справочнику сезона; вне справочника турнир скрыт; без справочника — всё', () => {
+  const games = (id) => [comp(id, '2026-11-13T10:00Z', single(ANDREEVA), single(SHNAIDER))];
+  const men = (id) => [comp(id, '2026-11-13T10:00Z', single(FRITZ), single(MUSETTI))];
+  const data = board({
+    // Брисбен — общий турнир: у мужчин ATP 250, у женщин WTA 500
+    atp: [event('970-2026', 'Brisbane International', { 'mens-singles': men(1), 'womens-singles': games(2) })],
+    wta: [
+      event('970-2026', 'Brisbane International', { 'mens-singles': men(1), 'womens-singles': games(2) }),
+      event('382-2026', 'WTA Finals', { 'womens-singles': games(3) }),
+      event('1007-2026', 'Cali Open', { 'womens-singles': games(4) }), // WTA 125: в справочнике 2026 нет
+      event('500-2031', 'Open 2031', { 'womens-singles': games(5) }), // сезона 2031 в справочнике нет
+      event('600-2031', 'Major 2031', { 'womens-singles': games(6) }, { major: true }),
+    ],
+  });
+  assert.deepEqual(build(data).leagues.map((l) => [l.name, l.level]), [
+    ['Brisbane International', 'ATP 250'],
+    ['Brisbane International', 'WTA 500'],
+    ['WTA Finals', 'WTA Finals'],
+    ['Open 2031', null],
+    ['Major 2031', 'Grand Slam'],
+  ]);
+  assert.equal(levelOf({ id: '1007-2026' }, 'wta'), undefined, 'есть справочник сезона, но турнира в нём нет — скрываем');
+  assert.equal(levelOf({ id: '154-2026' }, 'atp'), 'Grand Slam');
+  assert.equal(levelOf({ id: '7' }, 'atp'), null, 'номер без сезона — показываем без уровня');
 });

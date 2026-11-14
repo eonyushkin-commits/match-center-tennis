@@ -35,7 +35,7 @@ export function sections({ day, isToday, filters: f, q, pinned, byTime }) {
   q = q.trim().toLowerCase();
   const who = (m) => [m.home, m.away].flatMap((t) => [t.name, ...t.players.flatMap((p) => [p.name, p.ru?.name])]).filter(Boolean).join(' ').toLowerCase();
   const hit = (m, lg) => (!f.streams || m.streams.length) && (!f.live || isLive(m)) && (!f.favorites || m.favorite)
-    && (!q || `${lg.name} ${lg.country}`.toLowerCase().includes(q) || who(m).includes(q));
+    && (!q || `${lg.name} ${lg.level || ''} ${lg.country}`.toLowerCase().includes(q) || who(m).includes(q));
   const out = [];
 
   // без блока (не сегодня или фильтр «Идут сейчас») остаются только закреплённые строки

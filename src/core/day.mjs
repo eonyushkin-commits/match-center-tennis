@@ -6,6 +6,20 @@ import { createNamer, matchStreams } from './match.mjs';
 import { expect, isObject } from './shape.mjs';
 
 const PLAYERS = JSON.parse(await readFile(new URL('./players.json', import.meta.url), 'utf8')); // id ESPN → [имя, фамилия]
+// Справочник уровней турниров по сезонам (tournaments.json, правится вручную раз в год):
+// сезон → тур → номер турнира ESPN → уровень. ESPN сам уровень не отдаёт, только признак Шлема.
+const SEASONS = new Map(Object.entries(JSON.parse(await readFile(new URL('./tournaments.json', import.meta.url), 'utf8')))
+  .map(([year, s]) => [year, { atp: new Map(s.atp.map((t) => [t.id, t.level])), wta: new Map(s.wta.map((t) => [t.id, t.level])) }]));
+
+// Уровень турнира для разряда тура. Есть справочник сезона — показываем только турниры из него
+// (Шлемы, итоговые, 1000/500/250), остальные (125, Next Gen, командные) — undefined, их прячем.
+// Справочника нет — показываем всё, что отдал ESPN, с меткой только у Шлема.
+export function levelOf(ev, tour, seasons = SEASONS) {
+  const [num, year] = String(ev.id).split('-');
+  const season = seasons.get(year);
+  if (season) return season[tour].get(num);
+  return ev.major === true ? 'Grand Slam' : null;
+}
 
 // Разряды — «турниры» настроек: номер → тур, вид, метка разряда в ESPN и подпись
 // (подписи те же, что в knownLeagues из defaults.json)
@@ -112,6 +126,8 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
       if (ev.tour !== kind.tour) continue;
       expect(ev.id != null && typeof ev.name === 'string' && (ev.groupings == null || Array.isArray(ev.groupings)),
         'ESPN', `у турнира ${ev?.id ?? '?'} нет названия или списка разрядов`);
+      const level = levelOf(ev, kind.tour);
+      if (level === undefined) continue;
       const matches = [];
       for (const g of ev.groupings || []) {
         const slug = g?.grouping?.slug;
@@ -150,6 +166,7 @@ export function buildDay({ data, date, tz, settings, snapshot, now = Date.now() 
       leagues.push({
         id: `${cat}:${ev.id}`,
         name: ev.name,
+        level, // «WTA 500», «Grand Slam»; null — уровень неизвестен
         country: kind.label,
         matches,
       });
