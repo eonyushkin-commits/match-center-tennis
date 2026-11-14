@@ -14,9 +14,9 @@ function streamLabels(streams) {
   return streams.map((s) => ((seen[s.channel] = (seen[s.channel] || 0) + 1) > 1 ? `${s.channel} ${seen[s.channel]}` : s.channel));
 }
 
-// счёт по сетам: геймы и, если был тай-брейк, очки в нём мелко сверху
+// счёт по сетам: геймы и, если был тай-брейк, очки в нём мелко сверху; выигранный сет выделен
 const setsHtml = (t) => `<span class="sets">${t.sets.map((s) =>
-  `<span class="set">${esc(s.games)}${s.tiebreak != null ? `<sup>${esc(s.tiebreak)}</sup>` : ''}</span>`).join('')}</span>`;
+  `<span class="set${s.won ? ' won' : ''}">${esc(s.games)}${s.tiebreak != null ? `<sup>${esc(s.tiebreak)}</sup>` : ''}</span>`).join('')}</span>`;
 
 // Строка матча. view: { favIds — Set игроков в избранном, hidden(m) — прятать ли счёт,
 // player — { rowKey, url } открытого плеера }

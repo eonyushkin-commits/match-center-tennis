@@ -175,6 +175,9 @@ test('rowHtml: счёт по сетам с тай-брейком, победит
   assert.doesNotMatch(row(match()), /class="seed"/, 'никто не посеян — места под номер нет');
   assert.match(done, /<span class="set">6<\/span><span class="set">7<sup>7<\/sup><\/span>/);
   assert.match(done, /<span class="set">4<\/span><span class="set">6<sup>5<\/sup><\/span>/);
+  const won = row(match({ finished: true, home: side(10, 'Jannik Sinner', { sets: [{ games: 3 }, { games: 6, won: true }] }), away: side(20, 'Carlos Alcaraz', { sets: [{ games: 6, won: true }, { games: 3 }], winner: true }) }));
+  assert.match(won, /<span class="set">3<\/span><span class="set won">6<\/span>/, 'выделен выигранный сет, а не вся строка победителя');
+  assert.match(won, /<span class="set won">6<\/span><span class="set">3<\/span>/);
   assert.equal(done.match(/class="team win"/g).length, 1);
   assert.match(done, /^<div class="lg-tag meta">Финал · Center Court<\/div><div class="when">/, 'раунд и корт — строкой над игроками');
   const inLive = rowHtml({ key: 'live:1', m: match(), lg: { name: 'ATP Finals', country: 'Мужчины · одиночный разряд' }, showLeague: true }, view());

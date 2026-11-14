@@ -254,6 +254,6 @@ textarea.field { height: auto; padding: 8px 10px; width: 100%; resize: vertical;
 .team .sets { display: flex; margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; }
 .team .set { min-width: 26px; text-align: center; color: var(--muted); }
 .team .set sup { font-size: 9px; margin-left: 1px; line-height: 0; }
-.team.win .set, .when.live ~ .teams .set:last-child { color: var(--text); font-weight: 600; }
+.team .set.won, .when.live ~ .teams .set:last-child { color: var(--text); font-weight: 600; }
 .lg-tag + .lg-tag.meta { margin-top: -4px; } /* раунд и корт — вплотную под строкой турнира */
 @media (max-width: 560px) { .match { grid-template-columns: 54px 1fr; } }
