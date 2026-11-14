@@ -115,8 +115,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .team .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .team.win .name { font-weight: 600; }
 .team .score { margin-left: auto; padding-left: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.star { width: 22px; height: 22px; padding: 0; border: 0; background: none; color: var(--faint); opacity: 0; font-size: 14px; line-height: 1; flex: none; }
-.match:hover .star, .star:focus-visible, .star.on { opacity: 1; }
+/* ★ видна всегда (приглушённо): без мыши и на сенсорном экране тоже можно найти, куда нажать */
+.star { width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--faint); font-size: 14px; line-height: 1; flex: none; }
+.match:hover .star, .star:focus-visible { color: var(--muted); }
+.star:hover { color: var(--text); }
 .star.on { color: var(--star); }
 .side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; align-self: start; }
 .lg-tag { grid-column: 2 / 4; color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -125,7 +127,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .stream { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px;
   border: 1px solid var(--line); background: var(--surface-2); white-space: nowrap; }
 .stream:hover { border-color: var(--vk); }
-.stream .tag { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; opacity: .75; }
+.stream .tag { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; opacity: .75; }
 .stream .aud { margin-left: -2px; opacity: .7; font-variant-numeric: tabular-nums; }
 .stream.started { background: var(--live); border-color: var(--live); color: #fff; }
 .stream.started .aud { opacity: .9; }
@@ -191,6 +193,7 @@ textarea.field { height: auto; padding: 8px 10px; width: 100%; resize: vertical;
 
 .foot { margin-top: 24px; text-align: center; color: var(--faint); font-size: 12px; }
 .foot kbd { font: inherit; padding: 0 5px; border: 1px solid var(--line); border-radius: 5px; }
+.foot .stale { color: var(--live); }
 
 /* ---------- узкий экран ---------- */
 @media (max-width: 560px) {
@@ -221,13 +224,12 @@ textarea.field { height: auto; padding: 8px 10px; width: 100%; resize: vertical;
 .notice.update .icon-btn { width: 30px; height: 30px; box-shadow: none; color: var(--muted); }
 .notice.update progress { width: 160px; accent-color: var(--accent); }
 
-/* ---------- 🔔 напомнить о матче ---------- */
-.when .bell { display: block; margin: 2px auto 0; width: 22px; height: 20px; padding: 0; border: 0; background: none;
-  font-size: 12px; line-height: 1; opacity: 0; filter: grayscale(1); }
-.match:hover .when .bell, .when .bell:focus-visible { opacity: .55; }
-.when .bell:hover { opacity: 1; }
-.when .bell.on { opacity: 1; filter: none; }
-@media (max-width: 560px) { .when .bell { opacity: .45; } }
+/* ---------- 🔔 напомнить о матче: видна всегда (серая), при наведении ярче ---------- */
+.when .bell { display: block; margin: 2px auto 0; width: 24px; height: 22px; padding: 0; border: 0; background: none;
+  font-size: 12px; line-height: 1; opacity: .6; filter: grayscale(1); }
+.match:hover .when .bell { opacity: .8; }
+.when .bell:hover, .when .bell:focus-visible, .when .bell.on { opacity: 1; }
+.when .bell.on { filter: none; }
 
 /* ---------- теннис: флаги, посев, подача, счёт по сетам ---------- */
 .match { grid-template-columns: 64px 1fr auto; }
@@ -237,7 +239,7 @@ textarea.field { height: auto; padding: 8px 10px; width: 100%; resize: vertical;
 .team .serve { width: 7px; height: 7px; border-radius: 50%; background: var(--live); flex: none; }
 .team .sets { display: flex; margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; }
 .team .set { min-width: 26px; text-align: center; color: var(--muted); }
-.team .set sup { font-size: 9px; margin-left: 1px; line-height: 0; }
+.team .set sup { font-size: 11px; margin-left: 1px; line-height: 0; }
 .team .set.won, .when.live ~ .teams .set:last-child { color: var(--text); font-weight: 600; }
 .lg-tag + .lg-tag.meta { margin-top: -4px; } /* раунд и корт — вплотную под строкой турнира */
 @media (max-width: 560px) { .match { grid-template-columns: 54px 1fr; } }

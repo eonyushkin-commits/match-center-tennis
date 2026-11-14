@@ -5,7 +5,7 @@ import { reconcile, setHtml } from './dom.mjs';
 import { markFavorites as mark, scoresHidden, sections as buildSections } from './filter.mjs';
 import { addDays, dateStrip, embedUrl, esc, inDateRange, matchTitle, parseYmd, ymd } from './format.mjs';
 import { openSettingsDialog } from './settings-ui.mjs';
-import { emptyHtml, notices, popoverHtml, rowHtml, sectionHeadHtml, statusBadge, updateKey } from './view.mjs';
+import { emptyHtml, footHtml, notices, popoverHtml, rowHtml, sectionHeadHtml, statusBadge, updateKey } from './view.mjs';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -208,7 +208,7 @@ function renderStatus() {
   $('#status-text').textContent = text;
   $('#status').title = vk?.ready ? 'Каналы VK: нажмите, чтобы увидеть подробности' : 'Каналы VK читаются…';
   if (!$('#status-pop').hidden) renderPopover();
-  if (state.status?.version) $('#foot').innerHTML = `Матч-центр ${esc(state.status.version)} · <kbd>←</kbd> <kbd>→</kbd> дни · <kbd>/</kbd> поиск · <kbd>R</kbd> обновить`;
+  if (state.status?.version) $('#foot').innerHTML = footHtml({ version: state.status.version, day: state.day });
 }
 
 function renderNotices() {

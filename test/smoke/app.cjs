@@ -82,6 +82,8 @@ app.whenReady().then(async () => {
     assert.ok(await page(`!!document.querySelector('[data-key="live"] [data-key="live:101"]')`));
     assert.equal(await page(`document.querySelector('[data-key="m:101"] .name').textContent`), 'Mirra Andreeva');
     assert.equal(await page(`[...document.querySelectorAll('[data-key="m:101"] .team:first-child .set')].map((n) => n.textContent).join(' ')`), '6 2');
+    // время последнего ответа ESPN — в подвале, без пометки «не обновляется»
+    assert.match(await page(`document.querySelector('#foot').textContent`), /счёт ESPN от \d\d:\d\d ·/);
   });
 
   // каналы перечитываются раз в минуту, так что за несколько секунд новый эфир покажет только кнопка

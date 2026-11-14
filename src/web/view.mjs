@@ -1,5 +1,5 @@
 // Разметка: данные → HTML-строка. Без DOM и без общего состояния — всё нужное приходит аргументами.
-import { STATUS, audience, esc, hhmm, isLive } from './format.mjs';
+import { STATUS, audience, esc, hhmm, isLive, stamp } from './format.mjs';
 
 // Шапка раздела: «Сейчас в эфире» или турнир с разрядом
 const levelHtml = (lg) => (lg.level ? ` <span class="level">${esc(lg.level)}</span>` : '');
@@ -98,11 +98,13 @@ export function updateHtml(u) {
 }
 
 // Полосы над списком: обновление, ошибки, недоступные источники → [[класс, html], …]
-export function notices({ error, day, status, saveError, update: u, updateDismissed }) {
+export function notices({ error, day, status, saveError, update: u, updateDismissed }, now = Date.now()) {
   const out = [];
-  if (error && day) out.push(['bad', `<b>Не удалось обновить расписание:</b> ${esc(error)}. Показаны последние данные.`]);
-  if (day?.stale?.format) out.push(['bad', `<b>${esc(day.stale.message)}.</b> Показано расписание, полученное ранее.`]);
-  else if (day?.stale) out.push(['', '<b>ESPN сейчас недоступен</b> — показано расписание, полученное ранее.']);
+  // когда ESPN ответил последний раз: «от 14:58», без времени — «полученное ранее»
+  const since = day?.fetchedAt ? ` от ${stamp(day.fetchedAt, now)}` : ', полученное ранее';
+  if (error && day) out.push(['bad', `<b>Не удалось обновить расписание:</b> ${esc(error)}. Показано расписание${since}.`]);
+  if (day?.stale?.format) out.push(['bad', `<b>${esc(day.stale.message)}.</b> Показано расписание${since}.`]);
+  else if (day?.stale) out.push(['', `<b>ESPN сейчас недоступен</b> — показано расписание${since}.`]);
   for (const w of status?.warnings || []) out.push(['bad', esc(w)]);
   const vk = status?.vk;
   if (vk?.ready && vk.channels.length && vk.channels.every((c) => c.ok === false))
@@ -111,6 +113,15 @@ export function notices({ error, day, status, saveError, update: u, updateDismis
   const update = u && updateDismissed !== updateKey(u) && updateHtml(u);
   if (update) out.unshift(['update', update]);
   return out;
+}
+
+// Подвал: версия, свежесть счёта и подсказка по клавишам. fetchedAt — когда ESPN последний раз
+// ответил на этот день (не когда перерисовали страницу); при сбое — прежнее время с пометкой
+export function footHtml({ version, day }, now = Date.now()) {
+  const fresh = day?.fetchedAt
+    ? ` · <span class="${day.stale ? 'stale' : ''}" title="Когда ESPN последний раз прислал расписание и счёт этого дня">счёт ESPN от ${stamp(day.fetchedAt, now)}${day.stale ? ' (не обновляется)' : ''}</span>`
+    : '';
+  return `Матч-центр ${esc(version)}${fresh} · <kbd>←</kbd> <kbd>→</kbd> дни · <kbd>/</kbd> поиск · <kbd>R</kbd> обновить`;
 }
 
 // ---------- панель каналов ----------

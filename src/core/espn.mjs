@@ -24,7 +24,9 @@ export function shiftYmd(date, n) {
 const unfinished = (ev) => (ev.groupings || []).some((g) => (g.competitions || []).some((c) => c.status?.type?.state !== 'post'));
 
 export function createEspn(fetchImpl = fetch) {
-  const cache = new Map(); // key → { t, v } | { pending }
+  // key → { t, v } | { pending }. t — срок годности (refresh его сбрасывает), а время самого
+  // ответа ESPN лежит в v.fetchedAt: чтение кэша и сбой его не меняют
+  const cache = new Map();
   const hot = new Set(); // соседние дни, в которых нашёлся свой турнир с несыгранными матчами: их спрашиваем так же часто
   // для диагностики: tour → { okAt, errorAt, error } — время настоящих ответов ESPN, а не чтений кэша
   const health = new Map();
@@ -43,9 +45,11 @@ export function createEspn(fetchImpl = fetch) {
     if (hit?.pending) return hit.pending;
     if (hit && Date.now() - hit.t < ttlMs) return Promise.resolve(hit.v);
     const pending = load().then(
-      (v) => {
+      (data) => {
+        const t = Date.now();
+        const v = { ...data, fetchedAt: t };
         cache.delete(key); // переставляем в конец — самые старые записи удаляются первыми
-        cache.set(key, { t: Date.now(), v });
+        cache.set(key, { t, v });
         while (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value);
         return v;
       },
@@ -85,17 +89,21 @@ export function createEspn(fetchImpl = fetch) {
       if (own.some(unfinished)) hot.add(key);
       else hot.delete(key);
     });
-    return { events: events.map((ev) => ({ ...ev, tour })), stale: main.stale || null };
+    return { events: events.map((ev) => ({ ...ev, tour })), stale: main.stale || null, fetchedAt: main.fetchedAt };
   }
 
   return {
     health: () => [...health].map(([tour, h]) => ({ tour, ...h })),
-    // турниры выбранных туров, идущие около дня date (ГГГГММДД): { events: [{ tour, … }], stale }
+    // турниры выбранных туров, идущие около дня date (ГГГГММДД): { events: [{ tour, … }], stale, fetchedAt }.
+    // fetchedAt — когда ESPN последний раз ответил на сам день; из нескольких туров — самый давний
     async day(date, tours = TOURS) {
       const parts = await Promise.all(tours.map((tour) => tourDay(tour, date)));
       const stale = parts.map((p) => p.stale).filter(Boolean);
-      // смена формата важнее сбоя сети
-      return { events: parts.flatMap((p) => p.events), stale: stale.find((s) => s.format) || stale[0] || null };
+      return {
+        events: parts.flatMap((p) => p.events),
+        stale: stale.find((s) => s.format) || stale[0] || null, // смена формата важнее сбоя сети
+        fetchedAt: Math.min(...parts.map((p) => p.fetchedAt)),
+      };
     },
     // «Обновить» по кнопке: табло спросим заново, не дожидаясь срока. Полученное раньше
     // остаётся — его покажем, если ESPN не ответит.
