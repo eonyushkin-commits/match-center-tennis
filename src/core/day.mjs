@@ -65,16 +65,16 @@ function side(p, other, live) {
   const mine = p.linescores || [], theirs = other.linescores || [];
   // идущий сет ещё никем не выигран
   const done = live ? mine.length - 1 : mine.length;
-  let won = 0;
-  for (let i = 0; i < done; i++) if (mine[i]?.value > (theirs[i]?.value ?? -1)) won++;
+  const wonSet = (i) => i < done && mine[i]?.value > (theirs[i]?.value ?? -1);
   return {
     id: players.length === 1 ? players[0].id : null, // ★ — только у игрока одиночного разряда
     ids: players.map((x) => x.id).filter(Boolean),
     name: players.length > 1 ? players.map((x) => x.last).join(' / ') : players[0]?.name || 'Не определён',
     players,
     seed: p.curatedRank?.current ?? null,
-    sets: mine.map((l) => ({ games: l.value ?? null, tiebreak: l.tiebreak ?? null })),
-    score: mine.length ? won : null,
+    // won — сет выигран этим игроком: на странице его счёт в сете выделяется
+    sets: mine.map((l, i) => ({ games: l.value ?? null, tiebreak: l.tiebreak ?? null, won: wonSet(i) })),
+    score: mine.length ? mine.filter((_, i) => wonSet(i)).length : null,
     winner: p.winner === true,
     serving: live && p.possession === true,
   };

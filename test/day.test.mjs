@@ -88,12 +88,14 @@ test('имена — как в ESPN; стороны по order; у игрока 
 test('счёт: геймы по сетам, тай-брейк, выигранные сеты, победитель, подача', () => {
   const tb = (value, tiebreak) => ({ value, tiebreak });
   const done = only(finals(comp(1, '2026-11-13T10:00Z', single(ANDREEVA), single(SHNAIDER), { state: 'post', sets: [[4, tb(7, 7), 6], [6, tb(6, 5), 2]], winner: 0 })));
-  assert.deepEqual(done.home.sets, [{ games: 4, tiebreak: null }, { games: 7, tiebreak: 7 }, { games: 6, tiebreak: null }]);
+  assert.deepEqual(done.home.sets, [{ games: 4, tiebreak: null, won: false }, { games: 7, tiebreak: 7, won: true }, { games: 6, tiebreak: null, won: true }]);
+  assert.deepEqual(done.away.sets.map((x) => x.won), [true, false, false]);
   assert.deepEqual([done.home.score, done.away.score, done.home.winner, done.away.winner], [2, 1, true, false]);
   assert.deepEqual([done.started, done.finished, done.reason, done.liveTime], [true, true, 'Оконч.', null]);
 
   const live = only(finals(comp(1, '2026-11-13T10:00Z', single(ANDREEVA), single(SHNAIDER), { state: 'in', sets: [[6, 2], [4, 3]], serving: 1 })));
   assert.deepEqual([live.home.score, live.away.score], [1, 0], 'идущий сет никем не выигран');
+  assert.deepEqual([live.home.sets.map((x) => x.won), live.away.sets.map((x) => x.won)], [[true, false], [false, false]]);
   assert.deepEqual([live.started, live.finished, live.liveTime, live.home.serving, live.away.serving], [true, false, '2-й сет', false, true]);
 
   const soon = only(finals(comp(1, '2026-11-13T10:00Z', single(ANDREEVA), single(SHNAIDER))));
