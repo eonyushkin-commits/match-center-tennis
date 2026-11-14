@@ -315,9 +315,9 @@ function openPlayer(rowKey, url, resume = null) {
   if (!found) return;
   const { m, s, embed } = found;
   if (window.mc) {
-    const source = new URL(withTime(embed, resume?.position));
+    const source = new URL(embed); // resume бывает только в браузере: его передаёт возврат из отдельного окна
     source.searchParams.set('autoplay', '1');
-    const query = new URLSearchParams({ src: source.href, title: `${matchTitle(m)} · ${s.channel}`, url: s.url });
+    const query = new URLSearchParams({ src: source.href, title: `${matchTitle(m)} · ${s.channel}` });
     window.open(`player.html?${query}`, '_blank', 'popup,width=800,height=450');
     return;
   }
@@ -420,8 +420,6 @@ async function openMatchFromNotification(date, id) {
   setTimeout(() => row?.classList.remove('flash'), 1700);
 }
 window.mc?.onOpenMatch(({ date, id }) => openMatchFromNotification(date, id));
-// окно убрали в трей — эфир в нём больше не смотрят: иначе звук шёл бы без окна
-window.mc?.onToTray(() => { if (opened.player) closePlayer(true); });
 
 // ---------- настройки ----------
 function openSettings() {

@@ -55,8 +55,9 @@ export function sections({ day, isToday, filters: f, q, pinned, byTime }) {
 
   // Матчи идут по времени начала; начинающиеся одновременно стоят блоком своего турнира,
   // блоки одного времени — в порядке из настроек. Соседние блоки одного турнира — один раздел.
-  const slots = leagues.flatMap((s, order) => s.rows.map((r) => ({ r, lg: s.lg, order, at: Date.parse(r.m.utcTime) })));
-  slots.sort((a, b) => a.at - b.at || a.order - b.order);
+  // Матчи без назначенного времени (ESPN даёт им условную дату) — в конце, как и внутри турнира.
+  const slots = leagues.flatMap((s, order) => s.rows.map((r) => ({ r, lg: s.lg, order, at: Date.parse(r.m.utcTime), tbd: !r.m.timeKnown })));
+  slots.sort((a, b) => a.tbd - b.tbd || a.at - b.at || a.order - b.order);
   for (const { r, lg } of slots) {
     const last = out.at(-1);
     if (last?.lg === lg) last.rows.push(r);

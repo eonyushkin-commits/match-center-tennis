@@ -164,3 +164,52 @@ test('VK API: каналы, читаемые параллельно, ждут о
   await api.read({ screenName: 'a' });
   assert.equal(tokens, 1, 'пока токен действует, новый не нужен');
 });
+
+test('VK API: догрузки читаются раз в 15 минут, чаще — только пока в них есть незавершённый эфир', async () => {
+  const v = (id, status) => ({ owner_id: -1, id, title: 'Синнер — Алькарас', live_status: status, date: 1758380000 + id });
+  // первая страница, две догрузки; меняются между чтениями
+  let pages = [[v(9, 'postlive')], [v(5, 'upcoming'), v(4, 'postlive')], [v(3, 'postlive')]];
+  const calls = [];
+  const fetchImpl = async (url, o) => {
+    let json;
+    if (url.includes('get_anonym_token')) json = { data: { access_token: 't', expired_at: Date.now() / 1000 + 3600 } };
+    else if (url.includes('catalog.getVideo')) {
+      calls.push(0);
+      json = { response: { videos: pages[0], catalog: { default_section: 's', sections: [{ id: 's', next_from: '1' }] } } };
+    } else {
+      const i = +new URLSearchParams(o.body).get('start_from');
+      calls.push(i);
+      json = { response: { videos: pages[i], section: { next_from: pages[i + 1] ? String(i + 1) : undefined } } };
+    }
+    return { ok: true, json: async () => json };
+  };
+  const T0 = 1758390000e3; // позже дат всех видео: их ожидаемые эфиры «просрочены», то есть близки
+  let time = T0;
+  const api = createVkApi(fetchImpl, { now: () => time });
+  const read = async () => {
+    calls.length = 0;
+    const items = await api.read({ screenName: 'a' });
+    return [calls.join(''), items.map((s) => `${s.url.split('_')[1]}:${s.status}`).sort().join(' ')];
+  };
+  assert.deepEqual(await read(), ['012', '3:finished 4:finished 5:upcoming 9:finished'], 'первое чтение — целиком');
+  // ожидаемый эфир в первой догрузке: читаем до него, вторая догрузка — из прошлого чтения
+  pages = [[v(9, 'postlive')], [v(5, 'started'), v(4, 'postlive')], [v(3, 'postlive')]];
+  assert.deepEqual(await read(), ['01', '3:finished 4:finished 5:started 9:finished'], 'начало эфира в догрузке не пропущено');
+  pages = [[v(9, 'postlive')], [v(5, 'postlive'), v(4, 'postlive')], [v(3, 'postlive')]];
+  assert.deepEqual(await read(), ['01', '3:finished 4:finished 5:finished 9:finished']);
+  assert.deepEqual(await read(), ['0', '3:finished 4:finished 5:finished 9:finished'], 'незавершённых нет — только первая страница');
+  // новый эфир сдвигает прежнее видео с первой страницы: оно остаётся из прошлого чтения
+  pages = [[v(10, 'started')], [v(9, 'postlive'), v(5, 'postlive')], [v(4, 'postlive')]];
+  assert.deepEqual(await read(), ['0', '10:started 3:finished 4:finished 5:finished 9:finished']);
+  time = T0 + 15 * 60e3;
+  assert.deepEqual(await read(), ['012', '10:started 4:finished 5:finished 9:finished'], 'через 15 минут — целиком, ушедшее с канала видео пропадает');
+  // ожидаемый эфир дальше суток не заставляет читать догрузки, а в пределах суток — заставляет
+  const later = (h) => ({ ...v(6, 'upcoming'), live_start_time: (time + h * 3600e3) / 1000 });
+  pages = [[v(10, 'started')], [later(25), v(9, 'postlive')], [v(4, 'postlive')]];
+  time = T0 + 30 * 60e3;
+  assert.equal((await read())[0], '012');
+  assert.equal((await read())[0], '0', 'до эфира больше суток');
+  time += 2 * 3600e3;
+  assert.equal((await read())[0], '012', 'полное чтение по сроку');
+  assert.equal((await read())[0], '01', 'до эфира меньше суток');
+});

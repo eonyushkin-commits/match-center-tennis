@@ -9,6 +9,4 @@ contextBridge.exposeInMainWorld('mc', {
   installUpdate: () => ipcRenderer.invoke('update:install'),
   // клик по уведомлению: раскрыть матч
   onOpenMatch: (cb) => ipcRenderer.on('open-match', (_e, m) => cb(m)),
-  // окно спрятано в трей
-  onToTray: (cb) => ipcRenderer.on('to-tray', () => cb()),
 });
