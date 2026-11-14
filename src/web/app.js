@@ -252,8 +252,19 @@ function renderList() {
 }
 
 // ---------- панель каналов ----------
+let copyState = 'idle'; // кнопка «Скопировать отчёт»: idle | done | failed
+let copyTimer = null;
 function renderPopover() {
-  $('#status-pop').innerHTML = popoverHtml(state.status?.vk, state.settings?.refreshSeconds);
+  $('#status-pop').innerHTML = popoverHtml(state.status?.vk, state.settings?.refreshSeconds, window.mc?.copyDiagnostics ? copyState : null);
+}
+
+async function copyDiagnostics() {
+  let ok = false;
+  try { ok = await window.mc.copyDiagnostics(); } catch {}
+  copyState = ok ? 'done' : 'failed';
+  renderPopover();
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { copyState = 'idle'; if (!$('#status-pop').hidden) renderPopover(); }, 3000);
 }
 
 function togglePopover(show = $('#status-pop').hidden) {
@@ -405,6 +416,8 @@ document.addEventListener('click', (e) => {
   } else if (act === 'status') {
     e.stopPropagation();
     togglePopover(true);
+  } else if (act === 'diagnostics') {
+    copyDiagnostics();
   } else if (act === 'update-download') {
     window.mc?.downloadUpdate();
   } else if (act === 'update-install') {

@@ -1,7 +1,7 @@
 {
   "name": "match-center-tennis",
   "productName": "Матч-центр Теннис",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Матч-центр по теннису: расписание и счёт ATP и WTA из ESPN, трансляции из VK Видео",
   "main": "src/electron/main.cjs",
   "type": "commonjs",

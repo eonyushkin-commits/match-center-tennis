@@ -121,7 +121,8 @@ export function statusBadge(vk) {
   return { cls, text: `${vk.streamCount} эфиров · ${hhmm(vk.updatedAt)}` };
 }
 
-export function popoverHtml(vk, refreshSeconds) {
+// copy: null — кнопки отчёта нет (страница без приложения); 'idle' | 'done' | 'failed'
+export function popoverHtml(vk, refreshSeconds, copy = null) {
   const rows = (vk?.channels || []).map((c) => {
     const cls = c.ok === null ? 'wait' : c.ok ? 'ok' : 'bad';
     const how = c.ok === null ? 'читается…' : c.ok ? (c.via === 'api' ? 'через API' : 'через страницу канала') : esc(c.error);
@@ -129,5 +130,10 @@ export function popoverHtml(vk, refreshSeconds) {
     return `<div class="chan"><span class="dot ${cls}"></span><b>${esc(c.label)}</b><span class="n">${c.count} эфиров</span><small>${how}${c.ok === null ? '' : when}</small></div>`;
   }).join('');
   return `<h4>Каналы VK</h4>${rows || '<div class="empty">Каналов нет — добавьте их в настройках</div>'}
-    <div class="actions"><span>Обновляются раз в ${refreshSeconds ?? 60} с</span></div>`;
+    <div class="actions"><span>Обновляются раз в ${refreshSeconds ?? 60} с</span>${copy ? copyButton(copy) : ''}</div>`;
+}
+
+const COPY_TEXT = { idle: 'Скопировать отчёт', done: 'Отчёт скопирован', failed: 'Не удалось скопировать' };
+function copyButton(copy) {
+  return `<button type="button" class="btn" data-action="diagnostics" title="Версия, ОС и состояние источников — без путей, токенов и содержимого настроек">${COPY_TEXT[copy]}</button>`;
 }
