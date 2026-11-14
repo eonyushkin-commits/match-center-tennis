@@ -69,7 +69,7 @@ export function rowHtml({ key, m, lg, showLeague }, view) {
 
 export function emptyHtml(filtered) {
   if (filtered) return '<b>Нет матчей по выбранным фильтрам</b><button type="button" class="btn" data-action="reset-filters">Сбросить фильтры</button>';
-  return '<b>В этот день матчей нет</b>Разряды ATP и WTA выбираются в настройках.';
+  return '<b>В этот день матчей нет</b>Мужские и женские разряды выбираются в настройках.';
 }
 
 // ---------- обновление приложения: «Скачать» → «Установить» ----------

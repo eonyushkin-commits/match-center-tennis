@@ -7,11 +7,13 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { keepContentRatio } = require('./aspect.cjs');
 const { dataDir } = require('./data-dir.cjs');
+const { configurePlayerAudio } = require('./player-audio.cjs');
 
 const APP_ID = 'ru.sportcenter.tenniscenter';
 const NAME = 'Матч-центр Теннис';
 const TITLE = 'Матч-центр | Теннис';
 const PRELOAD = path.join(__dirname, 'preload.cjs');
+const PLAYER_PRELOAD = path.join(__dirname, 'preload-player.cjs');
 const ICON = path.join(__dirname, '..', 'assets', 'icon.ico');
 const ICON_PNG = path.join(__dirname, '..', 'assets', 'icon.png');
 const RELEASES = 'https://github.com/eonyushkin-commits/match-center-tennis/releases';
@@ -44,6 +46,7 @@ if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', dataDir
 let win = null;
 let mc = null;
 let tray = null;
+const playerWindows = new Set();
 let quitting = false; // true — выходим по-настоящему, а не прячемся в трей
 const startHidden = process.argv.includes('--hidden'); // автозапуск с Windows — сразу в трей
 const notifications = new Set(); // держим ссылки, иначе на Windows клик по уведомлению теряется
@@ -114,6 +117,9 @@ async function start() {
       let source;
       try { source = new URL(params.get('src')); } catch { return { action: 'deny' }; }
       if (source.protocol !== 'https:' || !/^(vkvideo\.ru|vk\.com|vk\.ru)$/.test(source.hostname) || source.pathname !== '/video_ext.php') return { action: 'deny' };
+      const muted = playerWindows.size > 0;
+      source.searchParams.set('js_api', '1');
+      source.searchParams.set('mute', muted ? '1' : '0');
       // VK отказывает iframe на локальной странице. Официальный плеер как
       // самостоятельная страница воспроизводит тот же эфир без подмены запросов.
       const player = new BrowserWindow({
@@ -121,8 +127,12 @@ async function start() {
         width: 800, height: 450, minWidth: 320, minHeight: 180, useContentSize: true,
         alwaysOnTop: true, backgroundColor: '#000', autoHideMenuBar: true,
         title: params.get('title') || 'Трансляция',
-        webPreferences: { partition: 'matchcenter', nodeIntegration: false, contextIsolation: true, sandbox: true },
+        // preload лишь задаёт высокое качество по умолчанию и ничего не открывает странице VK
+        webPreferences: { partition: 'matchcenter', nodeIntegration: false, contextIsolation: true, sandbox: true, preload: PLAYER_PRELOAD },
       });
+      playerWindows.add(player);
+      player.once('closed', () => playerWindows.delete(player));
+      configurePlayerAudio(player.webContents, { muted, url: source.href });
       keepContentRatio(player, 16 / 9);
       player.webContents.setWindowOpenHandler(({ url: target }) => { openExternal(target); return { action: 'deny' }; });
       player.webContents.on('will-navigate', (e, target) => {

@@ -15,7 +15,7 @@ const match = (o = {}) => ({
   home: side(10, 'Jannik Sinner'), away: side(20, 'Carlos Alcaraz'), streams: [], ...o,
 });
 const view = (o = {}) => ({ favIds: new Set(), hidden: () => false, player: null, ...o });
-const row = (m) => rowHtml({ key: `m:${m.id}`, m, lg: { name: 'ATP Finals', country: 'ATP · одиночный разряд' } }, view());
+const row = (m) => rowHtml({ key: `m:${m.id}`, m, lg: { name: 'ATP Finals', country: 'Мужчины · одиночный разряд' } }, view());
 
 // ---------- format ----------
 test('esc экранирует всё, что ломает разметку', () => {
@@ -96,7 +96,7 @@ function day() {
   const liveNoStream = match({ id: 2, started: true, home: side(30, 'Taylor Fritz'), away: side(40, 'Ben Shelton') });
   const later = match({ id: 3, home: side(50, 'Casper Ruud'), away: side(60, 'Tommy Paul', { players: [{ id: 60, name: 'Tommy Paul', ru: { name: 'Томми Пол' } }] }), favorite: true });
   const cup = match({ id: 4, finished: true, home: side(70, 'Mirra Andreeva'), away: side(80, 'Diana Shnaider'), streams: [stream({ status: 'finished' })] });
-  return { leagues: [{ id: 47, name: 'ATP Finals', country: 'ATP · одиночный разряд', matches: [live, liveNoStream, later] }, { id: 132, name: 'WTA Finals', country: 'WTA · одиночный разряд', matches: [cup] }] };
+  return { leagues: [{ id: 47, name: 'ATP Finals', country: 'Мужчины · одиночный разряд', matches: [live, liveNoStream, later] }, { id: 132, name: 'WTA Finals', country: 'Женщины · одиночный разряд', matches: [cup] }] };
 }
 const NO = { streams: false, live: false, favorites: false };
 const keys = (secs) => secs.map((s) => `${s.key}=${s.rows.map((r) => r.m.id).join(',')}`);
@@ -147,8 +147,8 @@ test('keepSection: раздел со строкой плеера сохраня�
 
 // ---------- view: строка матча ----------
 test('sectionHeadHtml: турнир с разрядом и числом матчей', () => {
-  assert.equal(sectionHeadHtml({ lg: { name: 'WTA <Finals>', country: 'WTA · парный разряд' }, rows: [1, 2] }),
-    'WTA &lt;Finals&gt; <small>WTA · парный разряд</small><span class="count">2</span>');
+  assert.equal(sectionHeadHtml({ lg: { name: 'WTA <Finals>', country: 'Женщины · парный разряд' }, rows: [1, 2] }),
+    'WTA &lt;Finals&gt; <small>Женщины · парный разряд</small><span class="count">2</span>');
   assert.match(sectionHeadHtml({ live: true, rows: [1] }), /^Сейчас в эфире/);
 });
 
@@ -175,8 +175,8 @@ test('rowHtml: счёт по сетам с тай-брейком, победит
   assert.match(done, /<span class="set">4<\/span><span class="set">6<sup>5<\/sup><\/span>/);
   assert.equal(done.match(/class="team win"/g).length, 1);
   assert.match(done, /^<div class="lg-tag meta">Финал · Center Court<\/div><div class="when">/, 'раунд и корт — строкой над игроками');
-  const inLive = rowHtml({ key: 'live:1', m: match(), lg: { name: 'ATP Finals', country: 'ATP · одиночный разряд' }, showLeague: true }, view());
-  assert.match(inLive, /^<div class="lg-tag">ATP Finals · ATP · одиночный разряд<\/div><div class="lg-tag meta">Финал · Center Court<\/div>/, 'в «Сейчас в эфире» — второй строкой под турниром');
+  const inLive = rowHtml({ key: 'live:1', m: match(), lg: { name: 'ATP Finals', country: 'Мужчины · одиночный разряд' }, showLeague: true }, view());
+  assert.match(inLive, /^<div class="lg-tag">ATP Finals · Мужчины · одиночный разряд<\/div><div class="lg-tag meta">Финал · Center Court<\/div>/, 'в «Сейчас в эфире» — второй строкой под турниром');
   assert.doesNotMatch(row(match({ round: '', court: null })), /lg-tag/);
   const live = row(match({ started: true, liveTime: '1-й сет', home: side(10, 'Jannik Sinner', { sets: games(2) }), away: side(20, 'Carlos Alcaraz', { sets: games(3), serving: true }) }));
   assert.equal(live.match(/class="serve"/g).length, 1);
