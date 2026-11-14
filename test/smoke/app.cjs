@@ -35,7 +35,7 @@ async function step(name, fn) {
     await fn();
     results.push({ name, ok: true });
   } catch (e) {
-    results.push({ name, ok: false, error: e.message.split('\n')[0] });
+    results.push({ name, ok: false, error: e.stack || e.message });
   }
   save();
 }
@@ -96,6 +96,10 @@ app.whenReady().then(async () => {
   });
 
   await step('эфир открывается напрямую в защищённом окне VK', async () => {
+    for (const src of ['https://example.com/video_ext.php', 'http://vkvideo.ru/video_ext.php', 'https://vkvideo.ru/other']) {
+      await page(`window.mc.openPlayer({src:${JSON.stringify(src)}})`);
+    }
+    assert.equal(players().length, 0, 'IPC отклоняет посторонние адреса');
     await click('[data-key="live:101"] .stream[data-play]');
     await until('окно эфира', () => players().length === 1 && players()[0].webContents.getURL().includes('video_ext.php'));
     const child = players()[0];
@@ -105,6 +109,7 @@ app.whenReady().then(async () => {
     assert.equal(prefs.nodeIntegration, false);
     assert.equal(prefs.contextIsolation, true);
     assert.equal(prefs.sandbox, true);
+    assert.equal(child.webContents.session.isSpellCheckerEnabled(), false);
     assert.equal(await js(child, `localStorage.getItem('vk_player_preferred_default_quality_settings')`), '{"type":"high_quality"}');
     assert.equal(await js(child, 'window.qualityAtStart'), '{"type":"high_quality"}', 'настройка записана до скриптов плеера');
     assert.equal(await js(child, 'typeof require + typeof process'), 'undefinedundefined');

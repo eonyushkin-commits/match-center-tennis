@@ -5,18 +5,18 @@ import { defaults } from './settings.mjs';
 
 const WEB = new URL('../web/', import.meta.url);
 // Отдаём только перечисленные файлы страницы
-const FILES = ['index.html', 'app.js', 'dom.mjs', 'filter.mjs', 'format.mjs', 'opened.mjs', 'settings-ui.mjs', 'view.mjs', 'styles.css', 'player.html', 'player.js'];
+const FILES = ['index.html', 'app.js', 'dom.mjs', 'filter.mjs', 'format.mjs', 'settings-ui.mjs', 'view.mjs', 'styles.css'];
 const TYPES = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8' };
 const STATIC = Object.fromEntries(FILES.map((file) => [`/${file}`, [file, TYPES[file.split('.').pop()]]]));
 STATIC['/'] = STATIC['/index.html'];
-// Страница может показывать только флаги с ESPN и плеер VK — всё остальное браузер заблокирует
+// В интерфейсе разрешены флаги ESPN; встраивание чужих страниц запрещено.
 const CSP = [
   "default-src 'self'",
   "img-src 'self' data: https://a.espncdn.com",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "connect-src 'self'",
-  'frame-src https://vkvideo.ru https://*.vkvideo.ru https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru',
+  "frame-src 'none'",
 ].join('; ');
 
 class HttpError extends Error {

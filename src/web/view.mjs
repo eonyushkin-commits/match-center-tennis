@@ -20,8 +20,7 @@ function streamLabels(streams) {
 const setsHtml = (t) => `<span class="sets">${t.sets.map((s) =>
   `<span class="set${s.won ? ' won' : ''}">${esc(s.games)}${s.tiebreak != null ? `<sup>${esc(s.tiebreak)}</sup>` : ''}</span>`).join('')}</span>`;
 
-// Строка матча. view: { favIds — Set игроков в избранном, hidden(m) — прятать ли счёт,
-// player — { rowKey, url } открытого плеера }
+// Строка матча. view: { favIds — Set игроков в избранном, hidden(m) — прятать ли счёт }.
 export function rowHtml({ key, m, lg, showLeague }, view) {
   const live = isLive(m);
   const when = esc(m.cancelled ? (m.reason || 'Отмена') : live ? (m.liveTime || 'LIVE') : m.finished ? (m.reason || 'Оконч.') : m.timeKnown ? hhmm(m.utcTime) : '—');
@@ -46,10 +45,9 @@ export function rowHtml({ key, m, lg, showLeague }, view) {
   };
 
   const labels = streamLabels(m.streams);
-  const p = view.player;
   let chips = m.streams.map((s, i) => {
     const aud = audience(s);
-    return `<a class="stream ${s.status}${p?.rowKey === key && p.url === s.url ? ' active' : ''}"
+    return `<a class="stream ${s.status}"
       href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(aud ? `${s.title}\n${aud.title}` : s.title)}" data-play>
       <span class="tag">${STATUS[s.status] || ''}</span>${esc(labels[i])}${aud ? `<span class="aud">${esc(aud.text)}</span>` : ''}</a>`;
   }).join('');

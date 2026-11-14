@@ -1,10 +1,9 @@
 // Главная страница: состояние, лента с сервера, плеер и обработчики. Разметка — в view.mjs,
-// что показывать — в filter.mjs, какой плеер открыт — в opened.mjs, форматирование — в format.mjs:
+// что показывать — в filter.mjs, форматирование — в format.mjs:
 // они без DOM и покрыты тестами.
 import { reconcile, setHtml } from './dom.mjs';
-import { keepSection, markFavorites as mark, scoresHidden, sections as buildSections } from './filter.mjs';
-import { addDays, dateStrip, embedUrl, esc, inDateRange, matchTitle, parseYmd, withTime, ymd } from './format.mjs';
-import { createOpened, matchIdOf } from './opened.mjs';
+import { markFavorites as mark, scoresHidden, sections as buildSections } from './filter.mjs';
+import { addDays, dateStrip, embedUrl, esc, inDateRange, matchTitle, parseYmd, ymd } from './format.mjs';
 import { openSettingsDialog } from './settings-ui.mjs';
 import { emptyHtml, notices, popoverHtml, rowHtml, sectionHeadHtml, statusBadge, updateKey } from './view.mjs';
 
@@ -26,8 +25,7 @@ const state = {
   update: null, // обновление приложения (только в приложении): { state, version, percent, notes, error }
   updateDismissed: null, // «версия:шаг» скрытой крестиком полосы обновления — до следующего шага или перезапуска
 };
-const opened = createOpened(); // встроенный плеер
-let playerEl = null;
+const matchIdOf = (rowKey) => Number(rowKey.split(':')[1]);
 
 // режим без спойлеров: счёт скрыт, пока его не попросят показать
 const isHidden = (m) => scoresHidden(m, { hideScores: state.settings?.ui.hideScores, revealed: state.revealed });
@@ -161,8 +159,6 @@ const sections = () => buildSections({
   filters: state.settings.ui.filters,
   q: state.q,
   byTime: state.settings.ui.leaguesByTime,
-  // матч с открытым плеером не прячем никакими фильтрами
-  pinned: opened.pinned(),
 });
 
 // ---------- отрисовка ----------
@@ -212,7 +208,7 @@ function renderStatus() {
   $('#status-text').textContent = text;
   $('#status').title = vk?.ready ? 'Каналы VK: нажмите, чтобы увидеть подробности' : 'Каналы VK читаются…';
   if (!$('#status-pop').hidden) renderPopover();
-  if (state.status?.version) $('#foot').innerHTML = `Матч-центр ${esc(state.status.version)} · <kbd>←</kbd> <kbd>→</kbd> дни · <kbd>/</kbd> поиск · <kbd>R</kbd> обновить · <kbd>Esc</kbd> закрыть плеер`;
+  if (state.status?.version) $('#foot').innerHTML = `Матч-центр ${esc(state.status.version)} · <kbd>←</kbd> <kbd>→</kbd> дни · <kbd>/</kbd> поиск · <kbd>R</kbd> обновить`;
 }
 
 function renderNotices() {
@@ -227,8 +223,7 @@ function renderList() {
     return;
   }
   list.setAttribute('aria-busy', 'false');
-  const host = playerEl?.closest('section')?.dataset.key; // раздел, где плеер уже стоит: его не пересоздаём и не двигаем
-  const secs = keepSection(sections(), opened.player?.rowKey, host);
+  const secs = sections();
   if (!secs.length) {
     const f = state.settings.ui.filters;
     reconcile(list, [{ key: 'empty', cls: 'empty', html: emptyHtml(!!(state.q || f.streams || f.live || f.favorites)) }]);
@@ -236,7 +231,6 @@ function renderList() {
   }
   reconcile(list, secs.map((s) => ({
     key: s.key,
-    fixed: s.key === host,
     cls: s.live ? 'league live' : 'league',
     create: () => {
       const n = document.createElement('section');
@@ -244,7 +238,7 @@ function renderList() {
       return n;
     },
   })));
-  const view = { favIds: favoriteIds(), hidden: isHidden, player: opened.player };
+  const view = { favIds: favoriteIds(), hidden: isHidden };
   const nodes = new Map([...list.children].map((n) => [n.dataset.key, n]));
   for (const s of secs) {
     const node = nodes.get(s.key);
@@ -252,16 +246,10 @@ function renderList() {
     const items = [];
     for (const r of s.rows) {
       items.push({ key: r.key, cls: `match${r.m.favorite ? ' fav' : ''}`, html: rowHtml(r, view) });
-      for (const what of opened.under(r.key)) items.push(under[what](r));
     }
     reconcile(node.lastElementChild, items);
   }
 }
-
-// что идёт под строкой матча (см. opened.under)
-const under = {
-  player: () => ({ key: 'player', node: playerEl, fixed: true }),
-};
 
 // ---------- панель каналов ----------
 function renderPopover() {
@@ -293,117 +281,14 @@ function streamOf(rowKey, url) {
   return embed ? { m, s, embed } : null;
 }
 
-// На какой секунде запись во встроенном плеере — чтобы окно «В окне» продолжило с того же места.
-// Плеер VK сообщает это сам, если открыт с js_api=1 и получил init. null — запись не запускали.
-let position = null;
-const popouts = new Map(); // окно «В окне» → { rowKey, url, position }: закроют — эфир вернётся в строку матча
-addEventListener('message', (e) => {
-  const pop = popouts.get(e.source);
-  if (pop) { // окно сообщает, на какой секунде запись
-    if (e.origin === location.origin && Number.isFinite(e.data?.position)) pop.position = e.data.position;
-    return;
-  }
-  if (!playerEl || e.source !== playerEl.querySelector('iframe').contentWindow) return;
-  const { state: playback, time } = e.data || {};
-  if (playback && playback !== 'unstarted' && Number.isFinite(time)) position = Math.floor(time);
-});
-
-// url — ссылка эфира. resume — эфир вернулся из окна: { position } — запускается сам,
-// запись — с той же секунды
-function openPlayer(rowKey, url, resume = null) {
+// Electron открывает официальный плеер VK в отдельном защищённом окне.
+function openPlayer(rowKey, url) {
   const found = streamOf(rowKey, url);
   if (!found) return;
   const { m, s, embed } = found;
-  if (window.mc) {
-    const source = new URL(embed); // resume бывает только в браузере: его передаёт возврат из отдельного окна
-    source.searchParams.set('autoplay', '1');
-    const query = new URLSearchParams({ src: source.href, title: `${matchTitle(m)} · ${s.channel}` });
-    window.open(`player.html?${query}`, '_blank', 'popup,width=800,height=450');
-    return;
-  }
-  position = resume?.position ?? null;
-  const src = `${withTime(embed, position)}${s.status === 'finished' ? '&js_api=1' : ''}${resume ? '&autoplay=1&mute=0' : ''}`;
-  const sameRow = playerEl && opened.player?.rowKey === rowKey;
-  opened.play(rowKey, url);
-
-  // тот же матч — переключаем канал без анимации
-  if (sameRow) {
-    playerEl.querySelector('iframe').src = src;
-    playerEl.querySelector('.ext').href = s.url;
-    render();
-    return;
-  }
-  if (playerEl) playerEl.remove();
-
-  const el = (playerEl = document.createElement('div'));
-  el.className = 'player';
-  el.innerHTML = `<div class="clip"><div class="inner">
-    <div class="phead"><b>${esc(matchTitle(m))}</b>
-      <a class="ext" href="${esc(s.url)}" target="_blank" rel="noopener">Открыть в VK ↗</a>
-      <button type="button" class="btn popout" title="Смотреть в отдельном окне — можно открыть несколько матчей сразу">⧉ В окне</button>
-      <button type="button" class="icon-btn close" title="Закрыть (Esc)" aria-label="Закрыть плеер"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
-    <div class="frame"><iframe src="${esc(src)}" title="Плеер VK" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"></iframe></div>
-  </div></div>`;
-  const frame = el.querySelector('iframe');
-  frame.addEventListener('load', () => frame.contentWindow.postMessage({ method: 'init' }, new URL(frame.src).origin));
-  el.addEventListener('transitionend', (e) => {
-    if (e.target === el && e.propertyName === 'grid-template-rows' && el.classList.contains('open')) centerPlayer(el);
-  });
-  render();
-  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
-}
-
-function closePlayer(immediate = false) {
-  const el = playerEl;
-  playerEl = null;
-  opened.stop();
-  if (el) {
-    if (immediate) el.remove();
-    else {
-      el.dataset.key = 'closing'; // доигрывает анимацию, отрисовка его не трогает
-      el.classList.remove('open');
-      setTimeout(() => el.remove(), 500);
-    }
-  }
-  render();
-}
-
-// выравниваем плеер по центру видимой области под липкой шапкой
-function centerPlayer(el) {
-  const head = $('.top').getBoundingClientRect().bottom;
-  const r = el.getBoundingClientRect();
-  const free = innerHeight - head;
-  scrollTo({ top: scrollY + r.top - head - Math.max(0, (free - r.height) / 2), behavior: 'smooth' });
-}
-
-// Плеер в отдельном окне: в приложении — своё окно поверх остальных, в браузере — всплывающее.
-// Окон можно открыть сколько угодно — так смотрят несколько матчей сразу.
-function popOut() {
-  const p = opened.player;
-  const found = p && streamOf(p.rowKey, p.url);
-  if (!found) return;
-  const { m, s, embed } = found;
-  // идущий эфир и запись, которую уже смотрели, запускаются в окне сами и сразу со звуком
-  // (без mute=0 плеер VK при автозапуске выключает звук); запись — с того же места
-  const autoplay = s.status === 'started' || position != null;
-  // js_api — окно с записью сообщает позицию: по ней запись продолжится в приложении, когда окно закроют
-  const src = `${withTime(embed, position)}${s.status === 'finished' ? '&js_api=1' : ''}${autoplay ? '&autoplay=1&mute=0' : ''}`;
-  const q = new URLSearchParams({ src, url: withTime(s.url, position), title: `${matchTitle(m)} · ${s.channel}` });
-  const w = window.open(`player.html?${q}`, '_blank', 'popup,width=800,height=450');
-  if (w) watchPopout(w, { rowKey: p.rowKey, url: p.url, position });
-  closePlayer(); // в двух местах сразу один эфир не нужен
-}
-
-// Окно «В окне» закрыли — эфир возвращается в строку своего матча и идёт дальше.
-function watchPopout(w, what) {
-  popouts.set(w, what);
-  const timer = setInterval(() => {
-    if (!w.closed) return;
-    clearInterval(timer);
-    popouts.delete(w);
-    // не возвращаем, если в приложении уже смотрят другой эфир или его окно скрыто (звук шёл бы без окна)
-    if (!opened.player && !document.hidden) openPlayer(what.rowKey, what.url, { position: what.position });
-  }, 400);
+  const source = new URL(embed);
+  source.searchParams.set('autoplay', '1');
+  window.mc.openPlayer({ src: source.href, title: `${matchTitle(m)} · ${s.channel}` });
 }
 
 // Клик по уведомлению: день матча, строка матча и плеер, если трансляция уже идёт
@@ -413,7 +298,7 @@ async function openMatchFromNotification(date, id) {
   if (!m) return;
   const rowKey = document.querySelector(`[data-key="live:${id}"]`) ? `live:${id}` : `m:${id}`;
   const live = m.streams.find((s) => s.status === 'started');
-  if (live && !opened.isPlaying(rowKey, live.url)) openPlayer(rowKey, live.url);
+  if (live) openPlayer(rowKey, live.url);
   const row = document.querySelector(`[data-key="${rowKey}"]`);
   row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   row?.classList.add('flash');
@@ -440,8 +325,6 @@ function setDate(d) {
   state.date = d;
   state.day = null;
   state.error = null;
-  opened.leaveDay();
-  closePlayer(true);
   renderDates();
   scrollTo({ top: 0 });
   return subscribe();
@@ -500,23 +383,14 @@ $('#list').addEventListener('click', (e) => {
     renderList();
     return;
   }
-  if (e.target.closest('.player .close')) { closePlayer(); return; }
-  if (e.target.closest('.player .popout')) { popOut(); return; }
-  // клик по игрокам матча, который смотрят, закрывает плеер
-  if (e.target.closest('.match .teams')) {
-    if (opened.player?.rowKey === e.target.closest('[data-key]').dataset.key) closePlayer();
-    return;
-  }
   const a = e.target.closest('[data-play]');
   // Ctrl/Shift/средняя кнопка — как обычная ссылка, в браузере
   if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
   const rowKey = a.closest('[data-key]').dataset.key;
   const found = streamOf(rowKey, a.getAttribute('href'));
-  if (!found) return; // встроить нельзя — откроется ссылкой в браузере
+  if (!found) return; // нет адреса плеера — откроется ссылкой в браузере
   const { s } = found;
   e.preventDefault();
-  // повторный клик по открытому эфиру закрывает плеер
-  if (opened.isPlaying(rowKey, s.url)) { closePlayer(); return; }
   openPlayer(rowKey, s.url);
 });
 
@@ -551,7 +425,6 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === 'Escape') {
     if (!$('#status-pop').hidden) togglePopover(false);
-    else if (opened.player) closePlayer();
   } else if (e.key === '/') {
     e.preventDefault();
     $('#q').focus();
@@ -569,7 +442,6 @@ document.addEventListener('keydown', (e) => {
 function rollover() {
   const today = ymd(new Date());
   if (today === state.today) return;
-  if (opened.player) return; // матч, который смотрят через полночь, не прерываем — перейдём, когда плеер закроют
   const wasToday = state.date === state.today;
   state.today = today;
   if (wasToday) setDate(today);

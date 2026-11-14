@@ -51,9 +51,6 @@ export function embedUrl(s) {
   }
 }
 
-// ссылка VK с началом воспроизведения: …&t=20m14s — так понимают и плеер, и сайт
-export const withTime = (url, sec) => (sec == null ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Math.floor(sec / 60)}m${sec % 60}s`);
-
 // «vkvideo.ru/@tennisprimesport», «https://vk.com/video/@x/lives», «@x» → screenName или null
 export function parseChannel(text) {
   const s = text.trim().replace(/^https?:\/\//i, '').replace(/^(www\.)?(vkvideo\.ru|vk\.com|vk\.ru)\//i, '')

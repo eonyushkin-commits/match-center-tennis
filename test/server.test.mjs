@@ -96,8 +96,11 @@ test('чужой Host отклоняется (защита от подмены D
 test('страница отдаётся с CSP, лишние пути — 404', async () => {
   const page = await fetch(`${base}/`);
   assert.equal(page.status, 200);
-  assert.match(page.headers.get('content-security-policy'), /frame-src https:\/\/vkvideo\.ru/);
+  assert.match(page.headers.get('content-security-policy'), /frame-src 'none'/);
   assert.match(page.headers.get('content-security-policy'), /img-src 'self' data: https:\/\/a\.espncdn\.com;/);
+  for (const removed of ['player.html', 'player.js', 'opened.mjs']) {
+    assert.equal((await fetch(`${base}/${removed}`)).status, 404, removed);
+  }
   assert.equal((await fetch(`${base}/../package.json`)).status, 404);
   assert.equal((await fetch(`${base}/src/core/settings.mjs`)).status, 404);
 });

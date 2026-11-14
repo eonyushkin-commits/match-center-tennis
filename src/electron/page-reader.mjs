@@ -11,6 +11,7 @@ let vkSession = null;
 function getSession() {
   if (!vkSession) {
     vkSession = session.fromPartition('vkread'); // без persist: — только в памяти
+    vkSession.setSpellCheckerEnabled(false);
     const skip = new Set(['image', 'font', 'media']);
     vkSession.webRequest.onBeforeRequest((d, cb) => cb({ cancel: skip.has(d.resourceType) }));
   }
@@ -24,6 +25,7 @@ async function readChannel(ch) {
     height: 1400,
     webPreferences: {
       session: getSession(),
+      spellcheck: false,
       backgroundThrottling: false,
       contextIsolation: false, // иначе preload не сможет подменить fetch на странице
       preload: PRELOAD,
