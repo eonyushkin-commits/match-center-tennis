@@ -170,6 +170,28 @@ app.whenReady().then(async () => {
     await page(`document.querySelector('#settings').close(), true`);
   });
 
+  await step('«Скопировать отчёт» в панели каналов: отчёт в буфере обмена, без имени пользователя', async () => {
+    const { clipboard } = require('electron');
+    // буфер обмена общий с системой — вернём как было; в Electron 44 он асинхронный
+    const saved = await clipboard.readText().catch(() => null);
+    try {
+      await clipboard.writeText('');
+      await click('#status');
+      await click('#status-pop [data-action="diagnostics"]');
+      await until('кнопка подтвердила копирование', () => page(`document.querySelector('#status-pop [data-action="diagnostics"]')?.textContent === 'Отчёт скопирован'`));
+      const report = await clipboard.readText();
+      assert.match(report, /^Матч-центр Теннис — диагностический отчёт/);
+      assert.match(report, new RegExp(`Версия: ${app.getVersion().replaceAll('.', '\\.')} \\(запуск из исходников\\)`));
+      assert.match(report, /ESPN:\n {2}atp: последний успех \d{4}-/);
+      assert.match(report, /ok {3}tennisprimesport: через api/);
+      const user = require('node:os').userInfo().username;
+      if (user.length > 2) assert.ok(!report.toLowerCase().includes(user.toLowerCase()), 'в отчёте нет имени пользователя');
+      await page(`document.body.click(), true`);
+    } finally {
+      if (typeof saved === 'string') await clipboard.writeText(saved).catch(() => {});
+    }
+  });
+
   await step('клик по уведомлению: скрытое окно показывается и открывает идущий матч в плеере', async () => {
     win.hide();
     await sleep(300);

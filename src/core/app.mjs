@@ -1,4 +1,5 @@
 // Всё ядро вместе: настройки, опрос каналов, ESPN, сервер и уведомления.
+import { coreDiagnostics } from './diagnostics.mjs';
 import { createFeed } from './feed.mjs';
 import { createEspn } from './espn.mjs';
 import { createHandler, startServer } from './server.mjs';
@@ -33,6 +34,8 @@ export async function createMatchCenter({ dataDir, fetchImpl = fetch, espnFetch 
     url,
     // уведомления о матчах избранных: { kind: soon | kickoff, date, match }
     onNotify: (fn) => listeners.add(fn),
+    // состояние источников для диагностического отчёта (см. diagnostics.mjs)
+    diagnostics: () => coreDiagnostics({ settings, poller, espn }),
     close() {
       poller.stop();
       watcher.stop();

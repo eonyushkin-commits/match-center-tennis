@@ -26,6 +26,9 @@ const unfinished = (ev) => (ev.groupings || []).some((g) => (g.competitions || [
 export function createEspn(fetchImpl = fetch) {
   const cache = new Map(); // key → { t, v } | { pending }
   const hot = new Set(); // соседние дни, в которых нашёлся свой турнир с несыгранными матчами: их спрашиваем так же часто
+  // для диагностики: tour → { okAt, errorAt, error } — время настоящих ответов ESPN, а не чтений кэша
+  const health = new Map();
+  const note = (tour, patch) => health.set(tour, { okAt: null, errorAt: null, error: null, ...health.get(tour), ...patch });
 
   async function getJson(url, check) {
     const r = await fetchImpl(url, { signal: AbortSignal.timeout(15e3) });
@@ -60,7 +63,10 @@ export function createEspn(fetchImpl = fetch) {
   }
 
   const board = (tour, date, ttlMs) => cached(`${tour}:${date}`, ttlMs, () =>
-    getJson(`${URL_BASE}/${tour}/scoreboard?dates=${date}`, (j) => need(Array.isArray(j?.events), 'в табло нет списка events')));
+    getJson(`${URL_BASE}/${tour}/scoreboard?dates=${date}`, (j) => need(Array.isArray(j?.events), 'в табло нет списка events')).then(
+      (j) => { note(tour, { okAt: Date.now() }); return j; },
+      (err) => { note(tour, { errorAt: Date.now(), error: err.message }); throw err; },
+    ));
 
   async function tourDay(tour, date) {
     const near = [shiftYmd(date, -1), shiftYmd(date, 1)];
@@ -83,6 +89,7 @@ export function createEspn(fetchImpl = fetch) {
   }
 
   return {
+    health: () => [...health].map(([tour, h]) => ({ tour, ...h })),
     // турниры выбранных туров, идущие около дня date (ГГГГММДД): { events: [{ tour, … }], stale }
     async day(date, tours = TOURS) {
       const parts = await Promise.all(tours.map((tour) => tourDay(tour, date)));

@@ -132,10 +132,13 @@ export function createStreamPoller({ channels, intervalMs, readers, timeoutMs = 
       updatedAt,
       channels: list.map((ch) => {
         const s = byChannel.get(ch.screenName);
+        const pause = pauses.get(ch.screenName);
         return {
           screenName: ch.screenName, label: ch.label || ch.screenName,
           ok: s ? s.ok : null, via: s?.via ?? null, error: s?.error ?? null,
           count: s?.streams.length ?? 0, checkedAt: s?.checkedAt ?? null, okAt: s?.okAt ?? null,
+          // неудачи запасного чтения подряд и до какого времени оно на паузе
+          fails: pause?.fails ?? 0, pausedUntil: pause?.until > now() ? pause.until : null,
         };
       }),
       streams: list.flatMap((ch) => byChannel.get(ch.screenName)?.streams || []),

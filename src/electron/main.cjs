@@ -1,8 +1,9 @@
 // Главный процесс: поднимает ядро матч-центра, показывает окно, живёт в трее, уведомляет о матчах
 // избранных игроков, открывает плеер в отдельных окнах и обновляется из GitHub Releases.
 const {
-  app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, nativeTheme, net, screen, shell,
+  app, BrowserWindow, Menu, Notification, Tray, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, screen, shell,
 } = require('electron');
+const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { keepContentRatio } = require('./aspect.cjs');
@@ -23,6 +24,9 @@ const load = (file) => import(pathToFileURL(path.join(__dirname, '..', file)).hr
 function openExternal(url) {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
 }
+
+// Запросы к главному процессу принимаются только от главной страницы приложения
+const fromMainPage = (event) => !!win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame;
 
 function fail(e) {
   dialog.showErrorBox(`${NAME} не запустился`, String(e?.stack || e));
@@ -113,7 +117,7 @@ async function start() {
 
   // Открытие официального плеера разрешено только главной странице приложения.
   ipcMain.handle('player:open', (event, { src, title } = {}) => {
-    if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return;
+    if (!fromMainPage(event)) return;
     let source;
     try { source = new URL(src); } catch { return; }
     if (source.protocol !== 'https:' || !/^(vkvideo\.ru|vk\.com|vk\.ru)$/.test(source.hostname) || source.pathname !== '/video_ext.php') return;
@@ -279,6 +283,42 @@ async function checkUpdatesNow() {
   }
 }
 
+// ---------- диагностика ----------
+// Отчёт для отправки другим: версия, ОС, состояние источников. Пути с именем пользователя
+// заменяются подписями, остальное очищает core/diagnostics.mjs
+async function copyDiagnostics() {
+  if (!mc) return false;
+  const { buildReport } = await load('core/diagnostics.mjs');
+  const paths = [['<userData>', 'userData'], ['<appData>', 'appData'], ['<temp>', 'temp'], ['~', 'home']]
+    .map(([label, name]) => [label, app.getPath(name)]);
+  const text = buildReport({
+    app: {
+      name: NAME, version: app.getVersion(), packaged: app.isPackaged,
+      electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node,
+      os: `${os.type()} ${os.release()} ${os.arch()}`,
+    },
+    core: mc.diagnostics(),
+  }, { paths });
+  await clipboard.writeText(text); // в Electron 44 буфер обмена асинхронный
+  return true;
+}
+
+// кнопка «Скопировать отчёт» в панели каналов
+ipcMain.handle('diagnostics:copy', (event) => fromMainPage(event) && copyDiagnostics());
+
+async function copyDiagnosticsFromMenu() {
+  try {
+    if (await copyDiagnostics()) {
+      dialog.showMessageBox(win, {
+        message: 'Отчёт скопирован в буфер обмена',
+        detail: 'В нём нет путей с именем пользователя, токенов и содержимого настроек. Вставьте его в сообщение о проблеме.',
+      });
+    }
+  } catch (e) {
+    dialog.showMessageBox(win, { type: 'warning', message: 'Не удалось собрать отчёт', detail: e.message });
+  }
+}
+
 // ---------- меню ----------
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
@@ -287,6 +327,7 @@ function buildMenu() {
       { role: 'reload', label: 'Обновить страницу' },
       { label: 'Папка с настройками', click: () => shell.openPath(app.getPath('userData')) },
       { label: 'Проверить обновления', click: checkUpdatesNow },
+      { label: 'Скопировать отчёт для диагностики', click: copyDiagnosticsFromMenu },
       { type: 'separator' },
       { role: 'resetZoom', label: 'Обычный масштаб' },
       { role: 'zoomIn', label: 'Крупнее' },

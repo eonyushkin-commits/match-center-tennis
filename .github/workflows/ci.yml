@@ -1,0 +1,51 @@
+# Проверки на каждый PR и push в main: unit-тесты (npm test) и сценарии Electron (npm run smoke).
+# Приложение собирается только под Windows, поэтому и проверки идут на Windows.
+# Smoke работает на подставной сети: настоящие ESPN и VK здесь не проверяются.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: npm test (Node ${{ matrix.node }})
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 — минимальная версия из engines, 24 — та, на которой ведётся разработка
+        node: [22, 24]
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # unit-тестам Electron не нужен
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  smoke:
+    name: npm run smoke (Electron)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run smoke
