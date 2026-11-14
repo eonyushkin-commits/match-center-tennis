@@ -43,8 +43,8 @@ export function comp(id, date, home, away, { state = 'pre', name = STATUS[state]
   };
 }
 
-export const event = (id, name, groupings) => ({
-  id, name,
+export const event = (id, name, groupings, extra = {}) => ({
+  id, name, ...extra,
   groupings: Object.entries(groupings).map(([slug, competitions]) => ({ grouping: { slug }, competitions })),
 });
 

@@ -114,6 +114,11 @@ test('sections: фильтры и поиск, пустой турнир проп
   assert.deepEqual(pick({ q: '  RUUD ' }), ['lg:47=3']);
   assert.deepEqual(pick({ q: 'томми пол' }), ['lg:47=3'], 'по русскому имени из словаря');
   assert.deepEqual(pick({ q: 'wta' }), ['lg:132=4']);
+  const d = day();
+  d.leagues[1].level = 'WTA Finals';
+  assert.deepEqual(keys(sections({ day: d, isToday: false, filters: NO, q: 'finals', pinned: new Set() })).length, 2);
+  d.leagues[0].level = 'ATP 500';
+  assert.deepEqual(keys(sections({ day: d, isToday: false, filters: NO, q: '500', pinned: new Set() })), ['lg:47=1,2,3'], 'поиск по уровню турнира');
 });
 
 test('sections: строка с открытым плеером не прячется фильтром', () => {
@@ -152,6 +157,8 @@ test('sectionHeadHtml: турнир с разрядом и числом матч
   assert.equal(sectionHeadHtml({ lg: { name: 'WTA <Finals>', country: 'Женщины · парный разряд' }, rows: [1, 2] }),
     'WTA &lt;Finals&gt; <small>Женщины · парный разряд</small><span class="count">2</span>');
   assert.match(sectionHeadHtml({ live: true, rows: [1] }), /^Сейчас в эфире/);
+  assert.equal(sectionHeadHtml({ lg: { name: 'Brisbane', level: 'WTA 500', country: 'Женщины · одиночный разряд' }, rows: [1] }),
+    'Brisbane <span class="level">WTA 500</span> <small>Женщины · одиночный разряд</small><span class="count">1</span>', 'уровень турнира — в шапке');
 });
 
 test('rowHtml: статус, у будущего — время и колокольчик; время не назначено — прочерк без колокольчика', () => {

@@ -2,10 +2,12 @@
 import { STATUS, audience, esc, hhmm, isLive } from './format.mjs';
 
 // Шапка раздела: «Сейчас в эфире» или турнир с разрядом
+const levelHtml = (lg) => (lg.level ? ` <span class="level">${esc(lg.level)}</span>` : '');
+
 export function sectionHeadHtml(s) {
   return s.live
     ? `Сейчас в эфире<span class="count">${s.rows.length}</span>`
-    : `${esc(s.lg.name)} <small>${esc(s.lg.country)}</small><span class="count">${s.rows.length}</span>`;
+    : `${esc(s.lg.name)}${levelHtml(s.lg)} <small>${esc(s.lg.country)}</small><span class="count">${s.rows.length}</span>`;
 }
 
 // у канала бывает несколько эфиров на матч (перезапуск) — нумеруем: «Sportcast», «Sportcast 2»
@@ -61,7 +63,7 @@ export function rowHtml({ key, m, lg, showLeague }, view) {
   const meta = [m.round, m.court].filter(Boolean).map(esc).join(' · ');
   // турнир, а под ним раунд и корт — отдельными строками над игроками: справа от счёта они
   // сдвигали бы счёт у каждого матча по-своему
-  return `${showLeague ? `<div class="lg-tag">${esc(lg.name)} · ${esc(lg.country)}</div>` : ''}${meta ? `<div class="lg-tag meta">${meta}</div>` : ''}<div class="when${live ? ' live' : ''}">${when}${bell}</div>
+  return `${showLeague ? `<div class="lg-tag">${esc(lg.name)} · ${lg.level ? `${esc(lg.level)} · ` : ''}${esc(lg.country)}</div>` : ''}${meta ? `<div class="lg-tag meta">${meta}</div>` : ''}<div class="when${live ? ' live' : ''}">${when}${bell}</div>
     <div class="teams">${team(m.home)}${team(m.away)}</div>
     <div class="side"></div>
     ${chips ? `<div class="streams">${chips}</div>` : ''}`;
