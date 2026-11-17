@@ -86,6 +86,15 @@ app.whenReady().then(async () => {
     assert.match(await page(`document.querySelector('#foot').textContent`), /счёт ESPN от \d\d:\d\d ·/);
   });
 
+  await step('переход: полоса ведёт к установщику Матч-центра во внешнем браузере', async () => {
+    const url = 'https://github.com/eonyushkin-commits/match-center/releases/download/v3.0.0/match-center-3.0.0-setup.exe';
+    assert.match(await page(`document.querySelector('.notice.migration').textContent`), /Теннис теперь в Матч-центре/);
+    assert.equal(await page(`document.querySelector('.notice.migration a').href`), url);
+    await click('.notice.migration a');
+    await until('установщик открыт во внешнем браузере', () => external.includes(url));
+    assert.equal(BrowserWindow.getAllWindows().length, 1, 'новое приложение не запускается внутри тенниса');
+  });
+
   // каналы перечитываются раз в минуту, так что за несколько секунд новый эфир покажет только кнопка
   const streamsOf103 = (n) => on(`document.querySelectorAll('[data-key="m:103"] .stream[data-play]').length === ${n}`, `эфиров у матча 103: ${n}`, 6000);
 

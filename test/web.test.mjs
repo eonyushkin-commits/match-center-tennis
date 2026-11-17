@@ -237,18 +237,26 @@ test('notices: обновление первым; крестик прячет п
   const update = { state: 'available', version: '3.0.0' };
   const base = { error: 'сеть', day: {}, status: null, saveError: null, update };
   const kinds = (o) => notices({ ...base, ...o }).map(([cls]) => cls);
-  assert.deepEqual(kinds({}), ['update', 'bad']);
-  assert.deepEqual(kinds({ updateDismissed: '3.0.0:available' }), ['bad']);
-  assert.deepEqual(kinds({ updateDismissed: '3.0.0:downloading', update: { ...update, state: 'downloading', percent: 60 } }), ['bad']);
-  assert.deepEqual(kinds({ updateDismissed: '3.0.0:downloading', update: { ...update, state: 'ready' } }), ['update', 'bad']);
-  assert.deepEqual(kinds({ updateDismissed: '3.0.0:ready', update: { ...update, state: 'ready' } }), ['bad']);
-  assert.deepEqual(kinds({ updateDismissed: '3.0.0:available', update: { ...update, version: '3.0.1' } }), ['update', 'bad']);
+  assert.deepEqual(kinds({}), ['update', 'bad', 'migration']);
+  assert.deepEqual(kinds({ updateDismissed: '3.0.0:available' }), ['bad', 'migration']);
+  assert.deepEqual(kinds({ updateDismissed: '3.0.0:downloading', update: { ...update, state: 'downloading', percent: 60 } }), ['bad', 'migration']);
+  assert.deepEqual(kinds({ updateDismissed: '3.0.0:downloading', update: { ...update, state: 'ready' } }), ['update', 'bad', 'migration']);
+  assert.deepEqual(kinds({ updateDismissed: '3.0.0:ready', update: { ...update, state: 'ready' } }), ['bad', 'migration']);
+  assert.deepEqual(kinds({ updateDismissed: '3.0.0:available', update: { ...update, version: '3.0.1' } }), ['update', 'bad', 'migration']);
 });
 
 test('notices: предупреждение, когда не читается ни один канал', () => {
   const vk = (oks) => ({ ready: true, channels: oks.map((ok) => ({ ok })) });
-  assert.equal(notices({ status: { vk: vk([false, false]) } }).length, 1);
-  assert.equal(notices({ status: { vk: vk([false, true]) } }).length, 0);
+  assert.equal(notices({ status: { vk: vk([false, false]) } }).filter(([cls]) => cls === 'bad').length, 1);
+  assert.equal(notices({ status: { vk: vk([false, true]) } }).filter(([cls]) => cls === 'bad').length, 0);
+});
+
+test('notices: переход в Матч-центр — постоянная полоса с установщиком, не команда автообновления', () => {
+  const [[cls, html]] = notices({});
+  assert.equal(cls, 'migration');
+  assert.match(html, /Теннис теперь в Матч-центре/);
+  assert.match(html, /href="https:\/\/github.com\/eonyushkin-commits\/match-center\/releases\/download\/v3.0.0\/match-center-3.0.0-setup.exe" target="_blank" rel="noopener"/);
+  assert.doesNotMatch(html, /data-action="update-/);
 });
 
 test('statusBadge: цвет точки по доле упавших каналов', () => {

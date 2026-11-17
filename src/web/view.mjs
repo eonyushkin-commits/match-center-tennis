@@ -110,6 +110,7 @@ export function notices({ error, day, status, saveError, update: u, updateDismis
   if (vk?.ready && vk.channels.length && vk.channels.every((c) => c.ok === false))
     out.push(['bad', '<b>Не удалось прочитать ни один канал VK.</b> Каналы читаются только с российского адреса. <button type="button" data-action="status">Подробнее</button>']);
   if (saveError) out.push(['bad', `<b>Не удалось сохранить настройки:</b> ${esc(saveError)}`]);
+  out.push(['migration', '<span><b>Теннис теперь в Матч-центре.</b> Теннис и футбол в одном приложении; настройки тенниса перенесутся автоматически. <a href="https://github.com/eonyushkin-commits/match-center/releases/download/v3.0.0/match-center-3.0.0-setup.exe" target="_blank" rel="noopener">Скачать установщик ↗</a></span>']);
   const update = u && updateDismissed !== updateKey(u) && updateHtml(u);
   if (update) out.unshift(['update', update]);
   return out;

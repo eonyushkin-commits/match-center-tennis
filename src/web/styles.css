@@ -214,7 +214,8 @@ textarea.field { height: auto; padding: 8px 10px; width: 100%; resize: vertical;
 #spoilers.on { background: var(--vk); border-color: var(--vk); color: #fff; }
 
 /* ---------- обновление приложения ---------- */
-.notice.update { align-items: center; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); color: var(--text); }
+.notice.update, .notice.migration { align-items: center; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); color: var(--text); }
+.notice.migration a { color: var(--vk); font-weight: 600; white-space: nowrap; }
 .notice.update > span:first-child { flex: 1; }
 .notice.update a { color: var(--vk); margin-left: 6px; }
 .notice.update .actions { display: flex; gap: 6px; }
